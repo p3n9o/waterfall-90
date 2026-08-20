@@ -1,0 +1,1023 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SHACK-90 · G90 Waterfall Control</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0a0c0a;
+    --panel:#12160f;
+    --panel-2:#171c14;
+    --line:#2a3324;
+    --phosphor:#8fff8a;
+    --phosphor-dim:#3d7a3a;
+    --amber:#ffb454;
+    --amber-dim:#8a6428;
+    --teal:#5bd9c9;
+    --red:#ff6b5e;
+    --text:#d9e6d3;
+    --text-dim:#7b8a73;
+    --mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Consolas, monospace;
+    --sans: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:var(--sans);}
+  body{min-height:100vh;}
+  ::selection{background:var(--phosphor-dim);color:#fff;}
+
+  /* top rail */
+  .topbar{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:14px 20px;border-bottom:1px solid var(--line);
+    background:linear-gradient(180deg,#0d0f0b,#0a0c0a);
+    position:sticky;top:0;z-index:20;
+  }
+  .brand{display:flex;align-items:baseline;gap:10px;}
+  .brand .mark{
+    font-family:var(--mono);font-weight:700;letter-spacing:.08em;
+    color:var(--phosphor);font-size:15px;
+    text-shadow:0 0 12px rgba(143,255,138,.35);
+  }
+  .brand .sub{font-size:11px;color:var(--text-dim);letter-spacing:.05em;}
+  .status-strip{display:flex;gap:14px;font-family:var(--mono);font-size:11px;flex-wrap:wrap;}
+  .status-chip{display:flex;align-items:center;gap:6px;padding:4px 9px;border:1px solid var(--line);border-radius:3px;background:var(--panel);}
+  .dot{width:7px;height:7px;border-radius:50%;background:#4a4a4a;flex:none;}
+  .dot.on{background:var(--phosphor);box-shadow:0 0 6px var(--phosphor);}
+  .dot.warn{background:var(--amber);box-shadow:0 0 6px var(--amber);}
+  .dot.off{background:var(--red);box-shadow:0 0 6px var(--red);}
+
+  .browser-warning{
+    background:#2a1512;border-bottom:1px solid #5c2b23;color:#ffb4a8;
+    font-family:var(--mono);font-size:12px;padding:8px 20px;display:none;
+  }
+
+  /* tabs */
+  .tabs{display:flex;gap:2px;padding:0 20px;border-bottom:1px solid var(--line);background:var(--bg);}
+  .tab-btn{
+    font-family:var(--mono);font-size:12px;letter-spacing:.06em;text-transform:uppercase;
+    background:none;border:none;color:var(--text-dim);padding:11px 16px;cursor:pointer;
+    border-bottom:2px solid transparent;transition:color .15s, border-color .15s;
+  }
+  .tab-btn:hover{color:var(--text);}
+  .tab-btn.active{color:var(--phosphor);border-bottom-color:var(--phosphor);}
+
+  .view{display:none;padding:18px 20px 60px;max-width:1400px;margin:0 auto;}
+  .view.active{display:block;}
+
+  /* layout: radio view */
+  .radio-grid{display:grid;grid-template-columns:300px 1fr;gap:16px;}
+  @media (max-width:900px){.radio-grid{grid-template-columns:1fr;}}
+
+  .panel{
+    background:var(--panel);border:1px solid var(--line);border-radius:6px;
+    padding:14px 14px 16px;
+  }
+  .panel + .panel{margin-top:14px;}
+  .panel h3{
+    margin:0 0 12px;font-family:var(--mono);font-size:10px;letter-spacing:.12em;
+    text-transform:uppercase;color:var(--text-dim);
+    display:flex;align-items:center;gap:8px;
+  }
+  .panel h3::after{content:"";flex:1;height:1px;background:var(--line);}
+
+  .btn{
+    font-family:var(--mono);font-size:12px;letter-spacing:.03em;color:var(--text);
+    background:var(--panel-2);border:1px solid var(--line);border-radius:4px;
+    padding:9px 12px;cursor:pointer;width:100%;text-align:left;
+    display:flex;align-items:center;justify-content:space-between;gap:8px;
+    transition:border-color .15s, color .15s, background .15s;
+  }
+  .btn:hover{border-color:var(--phosphor-dim);color:var(--phosphor);}
+  .btn:active{transform:translateY(1px);}
+  .btn:disabled{opacity:.4;cursor:not-allowed;}
+  .btn.connected{border-color:var(--phosphor);color:var(--phosphor);background:#10190f;}
+  .btn small{color:var(--text-dim);font-size:10px;}
+  .btn-row{display:flex;gap:8px;}
+  .btn-row .btn{width:auto;flex:1;justify-content:center;}
+
+  .btn-primary{
+    background:linear-gradient(180deg,#1a2a17,#12190f);border-color:var(--phosphor-dim);color:var(--phosphor);
+    font-weight:600;
+  }
+  .btn-primary:hover{border-color:var(--phosphor);box-shadow:0 0 10px rgba(143,255,138,.15);}
+
+  .btn-tune{
+    background:linear-gradient(180deg,#2a1b0f,#1c1109);border:1px solid var(--amber-dim);color:var(--amber);
+    font-weight:600;
+  }
+  .btn-tune:hover{border-color:var(--amber);box-shadow:0 0 10px rgba(255,180,84,.15);}
+  .btn-tune.active{background:var(--red);color:#1a0603;border-color:var(--red);animation:pulse 1s infinite;}
+  @keyframes pulse{0%,100%{box-shadow:0 0 6px rgba(255,107,94,.4)}50%{box-shadow:0 0 18px rgba(255,107,94,.85)}}
+
+  .vfo{
+    font-family:var(--mono);text-align:right;background:#060706;
+    border:1px solid var(--line);border-radius:4px;padding:12px 14px;margin-bottom:12px;
+  }
+  .vfo .hz{font-size:28px;font-weight:600;color:var(--phosphor);text-shadow:0 0 10px rgba(143,255,138,.3);letter-spacing:.02em;}
+  .vfo .unit{font-size:12px;color:var(--text-dim);margin-left:4px;}
+  .vfo .mode-row{display:flex;justify-content:space-between;margin-top:6px;font-size:11px;color:var(--text-dim);}
+  .freq-input{display:flex;gap:6px;margin-top:10px;}
+  .freq-input input{
+    flex:1;font-family:var(--mono);background:#060706;border:1px solid var(--line);color:var(--text);
+    padding:7px 8px;border-radius:4px;font-size:12px;
+  }
+  .freq-input button{
+    font-family:var(--mono);font-size:11px;background:var(--panel-2);border:1px solid var(--line);
+    color:var(--text);border-radius:4px;padding:0 10px;cursor:pointer;
+  }
+  .freq-input button:hover{color:var(--phosphor);border-color:var(--phosphor-dim);}
+
+  .meter{height:6px;background:#060706;border-radius:3px;overflow:hidden;border:1px solid var(--line);margin-top:8px;}
+  .meter .fill{height:100%;width:0%;background:linear-gradient(90deg,var(--phosphor),var(--amber),var(--red));transition:width .05s;}
+  .meter-label{display:flex;justify-content:space-between;font-family:var(--mono);font-size:9px;color:var(--text-dim);margin-top:3px;}
+
+  label.field{display:block;font-family:var(--mono);font-size:10px;color:var(--text-dim);letter-spacing:.05em;text-transform:uppercase;margin:12px 0 6px;}
+  label.field:first-child{margin-top:0;}
+  input[type=range]{width:100%;accent-color:var(--phosphor);}
+  .range-val{font-family:var(--mono);font-size:11px;color:var(--phosphor);float:right;}
+
+  select, .textfield{
+    width:100%;font-family:var(--mono);font-size:12px;background:#060706;border:1px solid var(--line);
+    color:var(--text);padding:7px 8px;border-radius:4px;
+  }
+
+  .hint{font-size:11px;color:var(--text-dim);line-height:1.5;margin-top:8px;}
+  .hint.warn{color:var(--amber);}
+
+  /* waterfall */
+  .scope-wrap{background:var(--panel);border:1px solid var(--line);border-radius:6px;overflow:hidden;}
+  .scope-head{
+    display:flex;justify-content:space-between;align-items:center;padding:10px 14px;
+    border-bottom:1px solid var(--line);
+  }
+  .scope-head h3{margin:0;}
+  .scope-freqs{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;color:var(--text-dim);padding:4px 14px;}
+  #waterfall{display:block;width:100%;height:420px;background:#000;image-rendering:pixelated;}
+  .scope-foot{display:flex;gap:8px;padding:10px 14px;border-top:1px solid var(--line);flex-wrap:wrap;}
+  .scope-foot .btn{width:auto;flex:1;min-width:140px;justify-content:center;}
+
+  .drop-zone{
+    border:1.5px dashed var(--line);border-radius:6px;padding:20px 14px;text-align:center;
+    font-family:var(--mono);font-size:11px;color:var(--text-dim);cursor:pointer;transition:border-color .15s,color .15s;
+  }
+  .drop-zone:hover, .drop-zone.drag{border-color:var(--phosphor-dim);color:var(--phosphor);}
+  .drop-zone input{display:none;}
+  .preview-row{display:flex;gap:10px;align-items:center;margin-top:10px;}
+  #imgPreview{width:64px;height:64px;object-fit:cover;border:1px solid var(--line);border-radius:4px;display:none;}
+  .preview-info{font-family:var(--mono);font-size:10px;color:var(--text-dim);flex:1;}
+
+  .progress-track{height:5px;background:#060706;border:1px solid var(--line);border-radius:3px;overflow:hidden;margin-top:10px;display:none;}
+  .progress-fill{height:100%;width:0%;background:var(--teal);transition:width .15s;}
+
+  /* settings grid */
+  .settings-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;}
+
+  .two-col{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+
+  footer{
+    text-align:center;font-family:var(--mono);font-size:10px;color:var(--text-dim);
+    padding:24px 20px 40px;letter-spacing:.03em;
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand">
+    <span class="mark">SHACK‑90</span>
+    <span class="sub">Xiegu G90 · DE‑19 waterfall console</span>
+  </div>
+  <div class="status-strip">
+    <div class="status-chip"><span class="dot" id="dotCat"></span>CAT</div>
+    <div class="status-chip"><span class="dot" id="dotHid"></span>PTT (HID)</div>
+    <div class="status-chip"><span class="dot" id="dotAudioIn"></span>AUDIO IN</div>
+    <div class="status-chip"><span class="dot" id="dotAudioOut"></span>AUDIO OUT</div>
+  </div>
+</div>
+
+<div class="browser-warning" id="browserWarning">
+  ⚠ This browser doesn't expose Web Serial and/or WebHID. Use a Chromium-based desktop browser (Chrome, Edge, Opera) over HTTPS to connect real hardware. The waterfall display and image-to-audio tools still work without it.
+</div>
+
+<div class="tabs">
+  <button class="tab-btn active" data-tab="radio">Radio</button>
+  <button class="tab-btn" data-tab="settings">Settings</button>
+</div>
+
+<!-- ===================== RADIO VIEW ===================== -->
+<div class="view active" id="view-radio">
+  <div class="radio-grid">
+
+    <!-- left rack -->
+    <div class="rack">
+      <div class="panel">
+        <h3>Connections</h3>
+        <button class="btn" id="btnCat">Connect CAT (Web Serial)<small id="catState">not connected</small></button>
+        <div style="height:8px"></div>
+        <button class="btn" id="btnHid">Connect PTT interface (WebHID)<small id="hidState">not connected</small></button>
+        <div style="height:8px"></div>
+        <button class="btn" id="btnAudio">Connect DE‑19 audio<small id="audioState">not connected</small></button>
+        <div class="hint">Only one application can hold the CAT port or audio device at a time. Close WSJT‑X / SDR Console / OmniRig before connecting here, or bridge through <code>rigctld</code>.</div>
+      </div>
+
+      <div class="panel">
+        <h3>VFO</h3>
+        <div class="vfo">
+          <div><span class="hz" id="vfoHz">— — . — — — . — —</span><span class="unit">MHz</span></div>
+          <div class="mode-row"><span id="vfoMode">MODE —</span><span id="vfoRxTx">RX</span></div>
+        </div>
+        <div class="freq-input">
+          <input type="text" id="freqSet" placeholder="e.g. 14.074000">
+          <button id="btnSetFreq">SET</button>
+        </div>
+        <div class="freq-input">
+          <button id="btnReadFreq" style="flex:1;">↻ Read frequency from rig</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h3>PTT &amp; Drive</h3>
+        <button class="btn btn-primary" id="btnPtt">PTT — hold to transmit</button>
+        <label class="field">Mic / drive gain fed to radio <span class="range-val" id="driveVal">50%</span></label>
+        <input type="range" id="driveSlider" min="0" max="100" value="50">
+        <div class="meter"><div class="fill" id="txMeter"></div></div>
+        <div class="meter-label"><span>TX audio level</span><span id="txMeterPct">0%</span></div>
+        <div class="hint">Drive sets the level of audio sent to the radio's mic/data input — keep it below the point where the rig's ALC starts compressing. If CI-V PTT ever misbehaves, the G90's menu also supports VOX keying from the Line In audio as a fallback.</div>
+      </div>
+    </div>
+
+    <!-- right: waterfall -->
+    <div>
+      <div class="scope-wrap">
+        <div class="scope-head">
+          <h3 style="margin:0;">Waterfall — receive</h3>
+          <div class="btn-row" style="width:auto;">
+            <button class="btn" id="btnStartWaterfall" style="width:auto;">▶ Start</button>
+          </div>
+        </div>
+        <canvas id="waterfall"></canvas>
+        <div class="scope-freqs"><span id="wfMinLabel">300 Hz</span><span id="wfCenterLabel"></span><span id="wfMaxLabel">2700 Hz</span></div>
+      </div>
+
+      <div class="panel" style="margin-top:14px;">
+        <h3>Image → waterfall transmit</h3>
+        <div class="drop-zone" id="dropZone">
+          Click or drop a photo — it will be rendered into the waterfall as it transmits.
+          <input type="file" id="fileInput" accept="image/*">
+        </div>
+        <div class="preview-row">
+          <img id="imgPreview">
+          <div class="preview-info" id="imgInfo">No image loaded.</div>
+        </div>
+        <div class="progress-track" id="txProgressTrack"><div class="progress-fill" id="txProgressFill"></div></div>
+        <div class="scope-foot">
+          <button class="btn btn-primary" id="btnRenderImage" disabled>1 · Render to audio</button>
+          <button class="btn btn-primary" id="btnPreviewImage" disabled>▶ Preview (speaker)</button>
+          <button class="btn btn-tune" id="btnTxImage" disabled>2 · Transmit over air</button>
+        </div>
+        <div class="hint">Image is converted to grayscale, then rendered as additive sine tones — one row of pixels per frequency bin, one column per time slice — so it redraws as a picture in a receiving station's waterfall. Tune resolution and duration in <b>Settings → Image encode</b>.</div>
+      </div>
+
+      <div class="panel" style="margin-top:14px;">
+        <h3>Test tuning</h3>
+        <button class="btn btn-tune" id="btnTune">Transmit constant carrier (tune)</button>
+        <div class="hint warn">Keys PTT and sends an unmodulated tone at the carrier frequency set in Settings. Auto-cuts off after the configured safety timeout. Use only briefly, at low power, for antenna/amp tuning — check your licence conditions before transmitting.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== SETTINGS VIEW ===================== -->
+<div class="view" id="view-settings">
+  <div class="settings-grid">
+
+    <div class="panel">
+      <h3>Waterfall display</h3>
+      <label class="field">Gain <span class="range-val" id="wfGainVal">1.0×</span></label>
+      <input type="range" id="wfGain" min="0.1" max="4" step="0.1" value="1.0">
+
+      <div class="two-col">
+        <div>
+          <label class="field">Min frequency (Hz)</label>
+          <input class="textfield" type="number" id="wfMin" value="300" step="50">
+        </div>
+        <div>
+          <label class="field">Max frequency (Hz)</label>
+          <input class="textfield" type="number" id="wfMax" value="2700" step="50">
+        </div>
+      </div>
+
+      <label class="field">Scroll speed <span class="range-val" id="wfSpeedVal">Normal</span></label>
+      <input type="range" id="wfSpeed" min="1" max="5" step="1" value="3">
+
+      <label class="field">FFT size</label>
+      <select id="wfFft">
+        <option value="1024">1024 (fast, coarse)</option>
+        <option value="2048" selected>2048 (balanced)</option>
+        <option value="4096">4096</option>
+        <option value="8192">8192 (fine, slower)</option>
+      </select>
+
+      <label class="field">Colour palette</label>
+      <select id="wfPalette">
+        <option value="phosphor" selected>Phosphor green</option>
+        <option value="amber">Amber</option>
+        <option value="ice">Ice blue</option>
+        <option value="classic">Classic (blue→red)</option>
+      </select>
+    </div>
+
+    <div class="panel">
+      <h3>CAT control</h3>
+      <label class="field">Baud rate</label>
+      <select id="catBaud">
+        <option value="4800">4800</option>
+        <option value="9600">9600</option>
+        <option value="19200" selected>19200 (G90 default)</option>
+        <option value="38400">38400</option>
+      </select>
+      <label class="field">Data / parity / stop bits</label>
+      <select id="catFraming">
+        <option value="8n1" selected>8N1</option>
+        <option value="8n2">8N2</option>
+      </select>
+      <div class="two-col">
+        <div>
+          <label class="field">CI-V rig address</label>
+          <input class="textfield" type="text" id="civTo" value="70">
+        </div>
+        <div>
+          <label class="field">CI-V controller address</label>
+          <input class="textfield" type="text" id="civFrom" value="E0">
+        </div>
+      </div>
+      <label class="field">PTT method</label>
+      <select id="pttMethod">
+        <option value="cat" selected>CI-V command (1C 00 — rig TX on/off)</option>
+        <option value="hid">WebHID GPIO (experimental, unconfirmed on DE‑19)</option>
+      </select>
+      <label class="field">HID GPIO bit for PTT (if using WebHID)</label>
+      <select id="cm108Bit">
+        <option value="1">GPIO 1 (0x01)</option>
+        <option value="2" selected>GPIO 2 (0x02)</option>
+        <option value="3">GPIO 3 (0x04)</option>
+        <option value="4">GPIO 4 (0x08)</option>
+      </select>
+      <div class="hint">The G90 speaks Icom CI-V (it CATs as an IC‑7100/IC‑756PRO clone), hex addresses shown without the "0x" — default rig address <b>70</b>, controller <b>E0</b>, 19200 baud. The DE‑19's 4‑pin "PA" port is a TX/BAND/ALC keying <i>output</i> for an amplifier, not a computer‑to‑radio PTT input, so CI‑V command PTT is the reliable option here; WebHID GPIO PTT is kept as a fallback in case your interface's chipset happens to support it, but isn't confirmed for the DE‑19.</div>
+      <div class="hint warn">Xiegu's own CAT guide notes that leaving a polling CAT program connected and then power-cycling the G90 can be misread as the firmware‑update key combo — disconnect CAT software when you're done.</div>
+    </div>
+
+    <div class="panel">
+      <h3>Audio devices</h3>
+      <label class="field">Input (DE‑19 receive audio)</label>
+      <select id="audioInSelect"><option value="">Connect audio first…</option></select>
+      <label class="field">Output (DE‑19 mic/data input)</label>
+      <select id="audioOutSelect"><option value="">Connect audio first…</option></select>
+      <button class="btn" id="btnRefreshDevices" style="margin-top:10px;">↻ Refresh device list</button>
+      <div class="hint">Output device selection uses <code>setSinkId</code>, supported in Chromium browsers. Pick the DE‑19 explicitly on multi-soundcard machines.</div>
+    </div>
+
+    <div class="panel">
+      <h3>Image encode</h3>
+      <div class="two-col">
+        <div>
+          <label class="field">Time columns</label>
+          <input class="textfield" type="number" id="imgCols" value="140" min="20" max="400">
+        </div>
+        <div>
+          <label class="field">Frequency rows</label>
+          <input class="textfield" type="number" id="imgRows" value="64" min="16" max="200">
+        </div>
+      </div>
+      <label class="field">Seconds per column <span class="range-val" id="imgFrameVal">0.09 s</span></label>
+      <input type="range" id="imgFrame" min="0.03" max="0.3" step="0.01" value="0.09">
+      <label class="field">Brightness curve (gamma) <span class="range-val" id="imgGammaVal">1.0</span></label>
+      <input type="range" id="imgGamma" min="0.4" max="2.5" step="0.1" value="1.0">
+      <div class="hint" id="imgDurationHint">Estimated transmit time: ~12.6 s</div>
+    </div>
+
+    <div class="panel">
+      <h3>Test tuning</h3>
+      <label class="field">Carrier tone frequency (Hz) <span class="range-val" id="tuneFreqVal">1500 Hz</span></label>
+      <input type="range" id="tuneFreq" min="300" max="2700" step="10" value="1500">
+      <label class="field">Safety cutoff (seconds) <span class="range-val" id="tuneTimeoutVal">30 s</span></label>
+      <input type="range" id="tuneTimeout" min="5" max="120" step="5" value="30">
+    </div>
+
+  </div>
+</div>
+
+<footer>SHACK‑90 runs entirely client-side · Web Serial / WebHID / Web Audio · no data leaves this page · check your amateur licence conditions before transmitting</footer>
+
+<script>
+(() => {
+  'use strict';
+
+  // ---------- state ----------
+  const S = {
+    port:null, catWriter:null, catReader:null, catFraming:'8n1',
+    hid:null, cm108Bit:2,
+    audioCtx:null, analyser:null, micSource:null, micStream:null,
+    outEl:null, outDest:null, // for routed output via setSinkId
+    waterfall:{ gain:1.0, min:300, max:2700, speed:3, fft:2048, palette:'phosphor', running:false },
+    drive:0.5,
+    pttMethod:'cat',
+    tuning:false, tuneTimer:null, tuneOsc:null, tuneGain:null,
+    renderedBuffer:null,
+    frequencyHz:14074000,
+  };
+
+  const $ = id => document.getElementById(id);
+
+  // ---------- capability check ----------
+  const hasSerial = 'serial' in navigator;
+  const hasHid = 'hid' in navigator;
+  if(!hasSerial || !hasHid){
+    $('browserWarning').style.display = 'block';
+  }
+
+  // ---------- tabs ----------
+  document.querySelectorAll('.tab-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+      document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+      btn.classList.add('active');
+      $('view-'+btn.dataset.tab).classList.add('active');
+    });
+  });
+
+  function setDot(id, state){ // state: 'off'|'warn'|'on'
+    const d = $(id);
+    d.classList.remove('on','warn','off');
+    if(state) d.classList.add(state);
+  }
+
+  // =====================================================================
+  // CAT CONTROL (Web Serial) — Icom CI-V, which the G90 speaks (behaves as
+  // an IC-7100/IC-756PRO clone). Default address 0x70, 19200 baud, framed
+  // as FE FE <to> <from> <cmd> [data...] FD.
+  // =====================================================================
+  function civFreqBytes(hz){
+    // Icom CI-V frequency encoding: 5 bytes, LSB-first, BCD nibble-swapped per byte.
+    let f = Math.round(hz);
+    const out = new Uint8Array(5);
+    for(let i=0;i<5;i++){
+      out[i] = ((f % 10) << 4) | (Math.floor(f/10) % 10);
+      f = Math.floor(f/100);
+    }
+    return out;
+  }
+  function civFrame(cmd, data){
+    const to = parseInt($('civTo').value, 16) || 0x70;
+    const from = parseInt($('civFrom').value, 16) || 0xE0;
+    const body = [0xFE,0xFE, to, from, ...(Array.isArray(cmd)?cmd:[cmd]), ...(data||[]), 0xFD];
+    return body;
+  }
+
+  async function connectCAT(){
+    if(!hasSerial){ alert('Web Serial is not available in this browser.'); return; }
+    try{
+      const port = await navigator.serial.requestPort();
+      const framing = $('catFraming').value;
+      await port.open({
+        baudRate: parseInt($('catBaud').value,10),
+        dataBits: 8,
+        stopBits: framing === '8n2' ? 2 : 1,
+        parity: 'none',
+      });
+      S.port = port;
+      S.catWriter = port.writable.getWriter();
+      S.catReader = port.readable.getReader();
+      $('btnCat').classList.add('connected');
+      $('catState').textContent = 'connected · ' + $('catBaud').value + ' baud';
+      setDot('dotCat','on');
+    }catch(err){
+      console.error(err);
+      alert('CAT connection failed or was cancelled: '+err.message);
+    }
+  }
+
+  async function catSend(bytes){
+    if(!S.catWriter) return null;
+    await S.catWriter.write(new Uint8Array(bytes));
+  }
+
+  async function catReadResponse(timeoutMs=800){
+    // Read bytes until an FD terminator shows up, or timeout.
+    if(!S.catReader) return null;
+    const chunks = [];
+    let total = 0;
+    const deadline = Date.now() + timeoutMs;
+    while(Date.now() < deadline){
+      const timeout = new Promise(res=>setTimeout(()=>res(null), Math.max(0,deadline-Date.now())));
+      const result = await Promise.race([S.catReader.read(), timeout]);
+      if(!result || result.done) break;
+      chunks.push(result.value);
+      total += result.value.length;
+      if(result.value.includes(0xFD)) break;
+    }
+    if(!chunks.length) return null;
+    const buf = new Uint8Array(total);
+    let off=0;
+    for(const c of chunks){ buf.set(c, off); off += c.length; }
+    return buf;
+  }
+
+  async function setFrequency(hz){
+    if(!S.catWriter){ alert('Connect CAT first.'); return; }
+    await catSend(civFrame(0x05, [...civFreqBytes(hz)]));
+    S.frequencyHz = hz;
+    updateVfoDisplay();
+  }
+
+  async function readFrequency(){
+    if(!S.catWriter){ alert('Connect CAT first.'); return; }
+    await catSend(civFrame(0x03, []));
+    const resp = await catReadResponse();
+    if(!resp || resp.length < 11){ $('vfoMode').textContent = 'MODE — (no reply)'; return; }
+    // Expect: FE FE <to> <from> 03 <5 freq bytes LSB-first BCD> FD
+    const fdIdx = resp.indexOf(0xFD);
+    const cmdIdx = resp.indexOf(0x03, 4);
+    if(fdIdx < 0 || cmdIdx < 0 || fdIdx - cmdIdx < 6){ $('vfoMode').textContent='MODE — (bad frame)'; return; }
+    const fbytes = resp.slice(cmdIdx+1, cmdIdx+6);
+    let hz = 0, mult = 1;
+    for(let i=0;i<5;i++){
+      const b = fbytes[i];
+      const lo = (b>>4)&0xF, hi = b&0xF;
+      hz += lo*mult*10 + hi*mult;
+      mult *= 100;
+    }
+    if(hz > 0){ S.frequencyHz = hz; updateVfoDisplay(); }
+    $('vfoMode').textContent = 'CI-V OK';
+  }
+
+  function updateVfoDisplay(){
+    const mhz = (S.frequencyHz/1e6).toFixed(6);
+    $('vfoHz').textContent = mhz;
+    $('freqSet').value = mhz;
+  }
+
+  async function catPTT(on){
+    if(!S.catWriter) return;
+    // Icom transceive TX ON/OFF: cmd 0x1C 0x00, data 0x01 (on) / 0x00 (off)
+    await catSend(civFrame([0x1C,0x00], [on ? 0x01 : 0x00]));
+  }
+
+  $('btnCat').addEventListener('click', connectCAT);
+  $('btnSetFreq').addEventListener('click', ()=>{
+    const mhz = parseFloat($('freqSet').value);
+    if(isNaN(mhz)){ alert('Enter a frequency in MHz, e.g. 14.074000'); return; }
+    setFrequency(Math.round(mhz*1e6));
+  });
+  $('btnReadFreq').addEventListener('click', readFrequency);
+
+  // =====================================================================
+  // PTT via WebHID (CM108-style GPIO, common on USB sound-card interfaces)
+  // =====================================================================
+  async function connectHID(){
+    if(!hasHid){ alert('WebHID is not available in this browser.'); return; }
+    try{
+      const devices = await navigator.hid.requestDevice({filters:[]});
+      if(!devices.length) return;
+      S.hid = devices[0];
+      if(!S.hid.opened) await S.hid.open();
+      $('btnHid').classList.add('connected');
+      $('hidState').textContent = 'connected · ' + (S.hid.productName || 'HID device');
+      setDot('dotHid','on');
+    }catch(err){
+      console.error(err);
+      alert('PTT interface connection failed: '+err.message);
+    }
+  }
+
+  async function hidPTT(on){
+    if(!S.hid) return;
+    const bit = parseInt($('cm108Bit').value,10);
+    const mask = 1 << (bit-1);
+    // CM108-family: output report — byte0 = GPIO data mask select, byte1 = GPIO state
+    const report = new Uint8Array([0x00, on ? mask : 0x00, 0x00, 0x00]);
+    try{
+      await S.hid.sendReport(0x00, report);
+    }catch(err){
+      console.warn('HID report failed, retrying as feature report', err);
+      try{ await S.hid.sendFeatureReport(0x00, report); }catch(e){ console.error(e); }
+    }
+  }
+
+  $('btnHid').addEventListener('click', connectHID);
+
+  // =====================================================================
+  // AUDIO — capture (waterfall) + output routing (image TX, tune tone)
+  // =====================================================================
+  async function connectAudio(){
+    try{
+      S.audioCtx = S.audioCtx || new (window.AudioContext||window.webkitAudioContext)();
+      S.micStream = await navigator.mediaDevices.getUserMedia({audio:{
+        deviceId: $('audioInSelect').value ? {exact:$('audioInSelect').value} : undefined,
+        echoCancellation:false, noiseSuppression:false, autoGainControl:false,
+      }});
+      S.micSource = S.audioCtx.createMediaStreamSource(S.micStream);
+      S.analyser = S.audioCtx.createAnalyser();
+      S.analyser.fftSize = S.waterfall.fft;
+      S.analyser.smoothingTimeConstant = 0.15;
+      S.micSource.connect(S.analyser);
+
+      // output element for routed playback (setSinkId support)
+      if(!S.outEl){
+        S.outEl = document.createElement('audio');
+        S.outEl.autoplay = true;
+        document.body.appendChild(S.outEl);
+      }
+      S.outDest = S.audioCtx.createMediaStreamDestination();
+      S.outEl.srcObject = S.outDest.stream;
+
+      await refreshDeviceList();
+      $('btnAudio').classList.add('connected');
+      $('audioState').textContent = 'connected';
+      setDot('dotAudioIn','on');
+      setDot('dotAudioOut','warn');
+      applyOutputSink();
+    }catch(err){
+      console.error(err);
+      alert('Audio connection failed: '+err.message);
+    }
+  }
+
+  async function refreshDeviceList(){
+    try{
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const ins = devices.filter(d=>d.kind==='audioinput');
+      const outs = devices.filter(d=>d.kind==='audiooutput');
+      const inSel = $('audioInSelect'), outSel = $('audioOutSelect');
+      inSel.innerHTML = ins.map(d=>`<option value="${d.deviceId}">${d.label||'Input device'}</option>`).join('') || '<option value="">No inputs found</option>';
+      outSel.innerHTML = outs.map(d=>`<option value="${d.deviceId}">${d.label||'Output device'}</option>`).join('') || '<option value="">No outputs found</option>';
+      // guess DE-19 by label
+      [...inSel.options].forEach(o=>{ if(/de-?19/i.test(o.textContent)) inSel.value=o.value; });
+      [...outSel.options].forEach(o=>{ if(/de-?19/i.test(o.textContent)) outSel.value=o.value; });
+    }catch(err){ console.warn(err); }
+  }
+
+  async function applyOutputSink(){
+    if(!S.outEl || !S.outEl.setSinkId) { setDot('dotAudioOut','warn'); return; }
+    const id = $('audioOutSelect').value;
+    if(!id) return;
+    try{
+      await S.outEl.setSinkId(id);
+      setDot('dotAudioOut','on');
+    }catch(err){
+      console.warn('setSinkId failed', err);
+      setDot('dotAudioOut','warn');
+    }
+  }
+
+  $('btnAudio').addEventListener('click', connectAudio);
+  $('btnRefreshDevices').addEventListener('click', refreshDeviceList);
+  $('audioOutSelect').addEventListener('change', applyOutputSink);
+  $('audioInSelect').addEventListener('change', ()=>{ if(S.micStream) connectAudio(); });
+
+  // =====================================================================
+  // WATERFALL RENDER (receive)
+  // =====================================================================
+  const canvas = $('waterfall');
+  const ctx = canvas.getContext('2d');
+  let dpr = window.devicePixelRatio||1;
+
+  function resizeCanvas(){
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = Math.max(1, Math.round(rect.width*dpr));
+    canvas.height = Math.max(1, Math.round(rect.height*dpr));
+  }
+  window.addEventListener('resize', resizeCanvas);
+  resizeCanvas();
+
+  function palette(t, name){ // t in [0,1] -> [r,g,b]
+    t = Math.min(1,Math.max(0,t));
+    switch(name){
+      case 'amber': return [Math.round(255*t), Math.round(180*t*t), Math.round(40*t*t)];
+      case 'ice': return [Math.round(60*t*t), Math.round(180*t), Math.round(255*Math.pow(t,0.7))];
+      case 'classic': {
+        // blue -> cyan -> yellow -> red
+        const stops = [[10,10,80],[0,180,220],[255,230,60],[220,30,30]];
+        const seg = t*(stops.length-1);
+        const i = Math.min(stops.length-2, Math.floor(seg));
+        const f = seg-i;
+        return stops[i].map((c,k)=>Math.round(c+(stops[i+1][k]-c)*f));
+      }
+      default: return [Math.round(20*t), Math.round(255*Math.pow(t,0.8)), Math.round(60*t*t)]; // phosphor
+    }
+  }
+
+  let freqData;
+  function animateWaterfall(){
+    if(!S.waterfall.running) return;
+    requestAnimationFrame(animateWaterfall);
+    if(!S.analyser) return;
+
+    const w = canvas.width, h = canvas.height;
+    if(!freqData || freqData.length !== S.analyser.frequencyBinCount){
+      freqData = new Uint8Array(S.analyser.frequencyBinCount);
+    }
+    S.analyser.getByteFrequencyData(freqData);
+
+    const speedPx = S.waterfall.speed; // rows per frame
+    // shift image up
+    const imgData = ctx.getImageData(0, speedPx, w, h-speedPx);
+    ctx.putImageData(imgData, 0, 0);
+
+    const sr = S.audioCtx.sampleRate;
+    const nyquist = sr/2;
+    const binHz = nyquist / freqData.length;
+    const minBin = Math.floor(S.waterfall.min / binHz);
+    const maxBin = Math.min(freqData.length-1, Math.ceil(S.waterfall.max / binHz));
+    const span = Math.max(1, maxBin-minBin);
+
+    for(let row=0; row<speedPx; row++){
+      for(let x=0; x<w; x++){
+        const bin = minBin + Math.floor((x/w)*span);
+        const v = (freqData[bin]||0)/255 * S.waterfall.gain;
+        const [r,g,b] = palette(v, S.waterfall.palette);
+        const idx = ((h-speedPx+row)*w + x)*4;
+        // draw directly via fillRect for perf fallback below
+      }
+    }
+    // faster path: build one row and drawImage-scale
+    const rowCanvas = document.createElement('canvas');
+    rowCanvas.width = span; rowCanvas.height = 1;
+    const rctx = rowCanvas.getContext('2d');
+    const rowImg = rctx.createImageData(span,1);
+    for(let i=0;i<span;i++){
+      const bin = minBin+i;
+      const v = (freqData[bin]||0)/255 * S.waterfall.gain;
+      const [r,g,b] = palette(v, S.waterfall.palette);
+      rowImg.data[i*4]=r; rowImg.data[i*4+1]=g; rowImg.data[i*4+2]=b; rowImg.data[i*4+3]=255;
+    }
+    rctx.putImageData(rowImg,0,0);
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(rowCanvas, 0, 0, span, 1, 0, h-speedPx, w, speedPx);
+  }
+
+  $('btnStartWaterfall').addEventListener('click', ()=>{
+    if(!S.analyser){ alert('Connect DE‑19 audio first.'); return; }
+    S.waterfall.running = !S.waterfall.running;
+    $('btnStartWaterfall').textContent = S.waterfall.running ? '■ Stop' : '▶ Start';
+    if(S.waterfall.running) animateWaterfall();
+  });
+
+  function updateFreqLabels(){
+    $('wfMinLabel').textContent = S.waterfall.min+' Hz';
+    $('wfMaxLabel').textContent = S.waterfall.max+' Hz';
+    $('wfCenterLabel').textContent = Math.round((S.waterfall.min+S.waterfall.max)/2)+' Hz';
+  }
+
+  // =====================================================================
+  // IMAGE → WATERFALL AUDIO (additive synthesis / inverse spectrogram)
+  // =====================================================================
+  let loadedImage = null;
+
+  function loadImageFile(file){
+    if(!file || !file.type.startsWith('image/')) return;
+    const reader = new FileReader();
+    reader.onload = e=>{
+      const img = new Image();
+      img.onload = ()=>{
+        loadedImage = img;
+        $('imgPreview').src = e.target.result;
+        $('imgPreview').style.display = 'block';
+        $('imgInfo').textContent = `${img.naturalWidth}×${img.naturalHeight}px — ready to render`;
+        $('btnRenderImage').disabled = false;
+        updateDurationEstimate();
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  }
+
+  $('dropZone').addEventListener('click', ()=>$('fileInput').click());
+  $('fileInput').addEventListener('change', e=>loadImageFile(e.target.files[0]));
+  ['dragover','dragleave','drop'].forEach(evt=>{
+    $('dropZone').addEventListener(evt, e=>{
+      e.preventDefault();
+      $('dropZone').classList.toggle('drag', evt==='dragover');
+      if(evt==='drop') loadImageFile(e.dataTransfer.files[0]);
+    });
+  });
+
+  function updateDurationEstimate(){
+    const cols = parseInt($('imgCols').value,10);
+    const frame = parseFloat($('imgFrame').value);
+    $('imgDurationHint').textContent = `Estimated transmit time: ~${(cols*frame).toFixed(1)} s`;
+  }
+
+  function imageToMatrix(img, cols, rows, gamma){
+    const off = document.createElement('canvas');
+    off.width = cols; off.height = rows;
+    const octx = off.getContext('2d');
+    octx.drawImage(img, 0, 0, cols, rows);
+    const data = octx.getImageData(0,0,cols,rows).data;
+    const matrix = []; // matrix[row][col] = 0..1 brightness, row 0 = top = high freq
+    for(let r=0;r<rows;r++){
+      const rowArr = new Float32Array(cols);
+      for(let c=0;c<cols;c++){
+        const idx = (r*cols+c)*4;
+        const gray = (0.299*data[idx] + 0.587*data[idx+1] + 0.114*data[idx+2]) / 255;
+        rowArr[c] = Math.pow(gray, gamma);
+      }
+      matrix[r] = rowArr;
+    }
+    return matrix;
+  }
+
+  function renderImageToBuffer(){
+    if(!loadedImage || !S.audioCtx){
+      if(!S.audioCtx) S.audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+    }
+    const cols = parseInt($('imgCols').value,10);
+    const rows = parseInt($('imgRows').value,10);
+    const frameSec = parseFloat($('imgFrame').value);
+    const gamma = parseFloat($('imgGamma').value);
+    const minF = S.waterfall.min, maxF = S.waterfall.max;
+    const sr = S.audioCtx.sampleRate;
+    const samplesPerFrame = Math.round(frameSec*sr);
+    const totalSamples = samplesPerFrame*cols;
+
+    const matrix = imageToMatrix(loadedImage, cols, rows, gamma);
+    const freqs = new Float32Array(rows);
+    for(let r=0;r<rows;r++){
+      // row 0 (top of image) maps to max frequency, bottom to min
+      freqs[r] = maxF - (r/(rows-1))*(maxF-minF);
+    }
+
+    const buffer = S.audioCtx.createBuffer(1, totalSamples, sr);
+    const out = buffer.getChannelData(0);
+    const phase = new Float64Array(rows);
+    const twoPi = Math.PI*2;
+
+    $('txProgressTrack').style.display = 'block';
+
+    for(let c=0;c<cols;c++){
+      const base = c*samplesPerFrame;
+      for(let r=0;r<rows;r++){
+        const amp = matrix[r][c];
+        if(amp < 0.03){ phase[r] += twoPi*freqs[r]*(samplesPerFrame/sr); continue; }
+        const w = twoPi*freqs[r]/sr;
+        let ph = phase[r];
+        // small fade in/out per frame block to reduce clicks
+        for(let s=0;s<samplesPerFrame;s++){
+          const fade = Math.min(1, Math.min(s, samplesPerFrame-1-s) / (samplesPerFrame*0.1+1));
+          out[base+s] += Math.sin(ph) * amp * fade * (1/Math.sqrt(rows));
+          ph += w;
+        }
+        phase[r] = ph;
+      }
+      if(c % 10 === 0){
+        $('txProgressFill').style.width = Math.round((c/cols)*100)+'%';
+      }
+    }
+    // normalize
+    let peak = 0;
+    for(let i=0;i<totalSamples;i++) peak = Math.max(peak, Math.abs(out[i]));
+    if(peak > 0){ const g = 0.9/peak; for(let i=0;i<totalSamples;i++) out[i]*=g; }
+
+    $('txProgressFill').style.width = '100%';
+    setTimeout(()=>{ $('txProgressTrack').style.display='none'; $('txProgressFill').style.width='0%'; }, 400);
+
+    S.renderedBuffer = buffer;
+    $('btnPreviewImage').disabled = false;
+    $('btnTxImage').disabled = false;
+    $('imgInfo').textContent = `Rendered: ${cols}×${rows}, ${(totalSamples/sr).toFixed(1)}s @ ${sr}Hz`;
+  }
+
+  function playBuffer(buffer, toRadio){
+    const src = S.audioCtx.createBufferSource();
+    src.buffer = buffer;
+    const gain = S.audioCtx.createGain();
+    gain.gain.value = toRadio ? S.drive : 0.7;
+    src.connect(gain);
+    if(toRadio && S.outDest){
+      gain.connect(S.outDest);
+    } else {
+      gain.connect(S.audioCtx.destination);
+    }
+    src.start();
+    return src;
+  }
+
+  $('btnRenderImage').addEventListener('click', renderImageToBuffer);
+  $('btnPreviewImage').addEventListener('click', ()=>{ if(S.renderedBuffer) playBuffer(S.renderedBuffer, false); });
+
+  $('btnTxImage').addEventListener('click', async ()=>{
+    if(!S.renderedBuffer) return;
+    await enablePTT();
+    const src = playBuffer(S.renderedBuffer, true);
+    src.onended = ()=> disablePTT();
+  });
+
+  // =====================================================================
+  // PTT unified control
+  // =====================================================================
+  async function enablePTT(){
+    if(S.pttMethod === 'hid') await hidPTT(true);
+    else await catPTT(true);
+    $('vfoRxTx').textContent = 'TX';
+    $('vfoRxTx').style.color = 'var(--red)';
+  }
+  async function disablePTT(){
+    if(S.pttMethod === 'hid') await hidPTT(false);
+    else await catPTT(false);
+    $('vfoRxTx').textContent = 'RX';
+    $('vfoRxTx').style.color = '';
+  }
+
+  const pttBtn = $('btnPtt');
+  pttBtn.addEventListener('mousedown', enablePTT);
+  pttBtn.addEventListener('touchstart', e=>{e.preventDefault(); enablePTT();});
+  ['mouseup','mouseleave','touchend'].forEach(evt=> pttBtn.addEventListener(evt, disablePTT));
+
+  // =====================================================================
+  // TEST TUNE — constant carrier
+  // =====================================================================
+  async function toggleTune(){
+    if(!S.audioCtx) S.audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+    if(S.tuning){
+      stopTune();
+      return;
+    }
+    S.tuning = true;
+    $('btnTune').textContent = '■ Stop carrier';
+    $('btnTune').classList.add('active');
+    await enablePTT();
+
+    const freq = parseFloat($('tuneFreq').value);
+    S.tuneOsc = S.audioCtx.createOscillator();
+    S.tuneOsc.frequency.value = freq;
+    S.tuneGain = S.audioCtx.createGain();
+    S.tuneGain.gain.value = S.drive;
+    S.tuneOsc.connect(S.tuneGain);
+    if(S.outDest) S.tuneGain.connect(S.outDest); else S.tuneGain.connect(S.audioCtx.destination);
+    S.tuneOsc.start();
+
+    const timeoutSec = parseInt($('tuneTimeout').value,10);
+    S.tuneTimer = setTimeout(stopTune, timeoutSec*1000);
+  }
+
+  async function stopTune(){
+    if(S.tuneTimer) clearTimeout(S.tuneTimer);
+    if(S.tuneOsc){ try{S.tuneOsc.stop();}catch(e){} S.tuneOsc.disconnect(); S.tuneOsc=null; }
+    S.tuning = false;
+    $('btnTune').textContent = 'Transmit constant carrier (tune)';
+    $('btnTune').classList.remove('active');
+    await disablePTT();
+  }
+
+  $('btnTune').addEventListener('click', toggleTune);
+
+  // =====================================================================
+  // SETTINGS wiring
+  // =====================================================================
+  function bindRange(id, cb){ $(id).addEventListener('input', e=>cb(parseFloat(e.target.value))); }
+
+  bindRange('wfGain', v=>{ S.waterfall.gain=v; $('wfGainVal').textContent=v.toFixed(1)+'×'; });
+  $('wfMin').addEventListener('input', e=>{ S.waterfall.min=parseFloat(e.target.value)||0; updateFreqLabels(); });
+  $('wfMax').addEventListener('input', e=>{ S.waterfall.max=parseFloat(e.target.value)||3000; updateFreqLabels(); });
+  const speedNames = {1:'Slow',2:'Relaxed',3:'Normal',4:'Fast',5:'Fastest'};
+  bindRange('wfSpeed', v=>{ S.waterfall.speed=v; $('wfSpeedVal').textContent=speedNames[v]; });
+  $('wfFft').addEventListener('change', e=>{
+    S.waterfall.fft = parseInt(e.target.value,10);
+    if(S.analyser) S.analyser.fftSize = S.waterfall.fft;
+  });
+  $('wfPalette').addEventListener('change', e=>{ S.waterfall.palette = e.target.value; });
+
+  $('pttMethod').addEventListener('change', e=>{ S.pttMethod = e.target.value; });
+  $('cm108Bit').addEventListener('change', e=>{ S.cm108Bit = parseInt(e.target.value,10); });
+
+  bindRange('driveSlider', v=>{ S.drive = v/100; $('driveVal').textContent = v+'%'; });
+
+  ['imgCols','imgFrame'].forEach(id=> $(id).addEventListener('input', updateDurationEstimate));
+  bindRange('imgFrame', v=>{ $('imgFrameVal').textContent = v.toFixed(2)+' s'; updateDurationEstimate(); });
+  bindRange('imgGamma', v=>{ $('imgGammaVal').textContent = v.toFixed(1); });
+
+  bindRange('tuneFreq', v=>{ $('tuneFreqVal').textContent = Math.round(v)+' Hz'; });
+  bindRange('tuneTimeout', v=>{ $('tuneTimeoutVal').textContent = Math.round(v)+' s'; });
+
+  // simple fake TX meter animation reacting to drive while transmitting
+  setInterval(()=>{
+    if(S.tuning || (S.outDest && S.audioCtx && S.audioCtx.state==='running')){
+      const pct = Math.round(S.drive*100 * (0.85+Math.random()*0.15));
+      $('txMeter').style.width = pct+'%';
+      $('txMeterPct').textContent = pct+'%';
+    } else {
+      $('txMeter').style.width = '0%';
+      $('txMeterPct').textContent = '0%';
+    }
+  }, 150);
+
+  updateFreqLabels();
+  updateVfoDisplay();
+  updateDurationEstimate();
+})();
+</script>
+</body>
+</html>
