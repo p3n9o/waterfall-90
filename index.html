@@ -242,11 +242,13 @@
         <h3>PTT &amp; Drive</h3>
         <button class="btn btn-primary" id="btnPtt">PTT — hold to transmit</button>
         <button class="btn" id="btnPanicRelease" style="display:none;margin-top:8px;border-color:var(--red);color:var(--red);justify-content:center;">⏹ Force PTT release</button>
-        <label class="field">Mic / drive gain fed to radio <span class="range-val" id="driveVal">50%</span></label>
-        <input type="range" id="driveSlider" min="0" max="100" value="50">
+        <label class="field">Mic / drive gain fed to radio <span class="range-val" id="driveVal">20%</span></label>
+        <input type="range" id="driveSlider" min="0" max="100" value="20">
         <div class="meter"><div class="fill" id="txMeter"></div></div>
         <div class="meter-label"><span>TX audio level</span><span id="txMeterPct">0%</span></div>
-        <div class="hint">Drive sets the level of audio sent to the radio's mic/data input — keep it below the point where the rig's ALC starts compressing. If CI-V PTT ever misbehaves, the G90's menu also supports VOX keying from the Line In audio as a fallback.</div>
+        <div class="hint warn">A picture with many simultaneous "on" tones (dense letter strokes, filled shapes) reads much louder to the rig than a normal voice or FT8 signal. If a receiving station sees a solid, textured block instead of your picture, that's ALC-driven splatter — turn drive <i>down</i>, not up, and watch the G90's ALC indicator: it should barely move.</div>
+        <div class="hint">Drive sets the level of audio sent to the radio's mic/data input. If CI-V PTT ever misbehaves, the G90's menu also supports VOX keying from the Line In audio as a fallback.</div>
+        <div class="hint">The per-column power in the image encoder is normalized so a busy region and a sparse region hit the radio with roughly the same average level, but overall drive still needs to sit low enough that ALC action stays at or near zero.</div>
       </div>
     </div>
 
@@ -434,7 +436,7 @@
     audioCtx:null, analyser:null, micSource:null, micStream:null,
     outEl:null, outDest:null, // for routed output via setSinkId
     waterfall:{ gain:1.0, min:300, max:2700, speed:3, fft:2048, palette:'phosphor', running:false },
-    drive:0.5,
+    drive:0.2,
     pttMethod:'cat',
     tuning:false, tuneTimer:null, tuneOsc:null, tuneGain:null,
     renderedBuffer:null,
@@ -990,6 +992,16 @@
 
     for(let c=0;c<cols;c++){
       const base = c*samplesPerFrame;
+      // Count how many tones are active this time-step BEFORE synthesizing.
+      // A letter's interior can have dozens of simultaneous tones while a
+      // thin stroke has only a few — without per-column power normalization,
+      // dense moments hit the radio's ALC far harder than sparse ones, and
+      // that uneven drive is what clips into broadband splatter (a solid,
+      // textured block instead of a picture) on the far end.
+      let activeCount = 0;
+      for(let r=0;r<rows;r++){ if(matrix[r][c] >= 0.03) activeCount++; }
+      const colScale = activeCount > 0 ? 1/Math.sqrt(activeCount) : 0;
+
       for(let r=0;r<rows;r++){
         const amp = matrix[r][c];
         if(amp < 0.03){ phase[r] += twoPi*freqs[r]*(samplesPerFrame/sr); continue; }
@@ -998,7 +1010,7 @@
         // small fade in/out per frame block to reduce clicks
         for(let s=0;s<samplesPerFrame;s++){
           const fade = Math.min(1, Math.min(s, samplesPerFrame-1-s) / (samplesPerFrame*0.1+1));
-          out[base+s] += Math.sin(ph) * amp * fade * (1/Math.sqrt(rows));
+          out[base+s] += Math.sin(ph) * amp * fade * colScale;
           ph += w;
         }
         phase[r] = ph;
@@ -1007,10 +1019,18 @@
         $('txProgressFill').style.width = Math.round((c/cols)*100)+'%';
       }
     }
-    // normalize
+    // Global normalize to a safe peak, then a gentle soft-knee limiter as a
+    // last line of defence against any remaining transients — keeps the
+    // signal's crest factor low and predictable so it sits comfortably
+    // under the rig's ALC threshold instead of pumping it.
     let peak = 0;
     for(let i=0;i<totalSamples;i++) peak = Math.max(peak, Math.abs(out[i]));
-    if(peak > 0){ const g = 0.9/peak; for(let i=0;i<totalSamples;i++) out[i]*=g; }
+    if(peak > 0){ const g = 0.85/peak; for(let i=0;i<totalSamples;i++) out[i]*=g; }
+    const limitThresh = 0.8;
+    for(let i=0;i<totalSamples;i++){
+      const x = out[i];
+      out[i] = x >= 0 ? limitThresh*Math.tanh(x/limitThresh) : -limitThresh*Math.tanh(-x/limitThresh);
+    }
 
     $('txProgressFill').style.width = '100%';
     setTimeout(()=>{ $('txProgressTrack').style.display='none'; $('txProgressFill').style.width='0%'; }, 400);
