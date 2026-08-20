@@ -279,13 +279,15 @@
           <img id="imgPreview">
           <div class="preview-info" id="imgInfo">No image loaded.</div>
         </div>
+        <label class="field">Transmit speed <span class="range-val" id="txSpeedVal">Normal — 0.09s/column</span></label>
+        <input type="range" id="txSpeedSlider" min="0.03" max="0.3" step="0.01" value="0.09">
         <div class="progress-track" id="txProgressTrack"><div class="progress-fill" id="txProgressFill"></div></div>
         <div class="scope-foot">
           <button class="btn btn-primary" id="btnRenderImage" disabled>1 · Render to audio</button>
           <button class="btn btn-primary" id="btnPreviewImage" disabled>▶ Preview (speaker)</button>
           <button class="btn btn-tune" id="btnTxImage" disabled>2 · Transmit over air</button>
         </div>
-        <div class="hint">Image is converted to grayscale, then rendered as additive sine tones — one row of pixels per frequency bin, one column per time slice — so it redraws as a picture in a receiving station's waterfall. Tune resolution and duration in <b>Settings → Image encode</b>.</div>
+        <div class="hint">Image is converted to grayscale, then rendered as a proper inverse-spectrogram (overlap-add sine synthesis) — one row of pixels per frequency bin, one column per time slice — so it redraws as a picture in a receiving station's waterfall. Slower transmit speed = more time per column = sharper detail but a longer time on air. Fine-tune resolution in <b>Settings → Image encode</b>.</div>
       </div>
 
       <div class="panel" style="margin-top:14px;">
@@ -887,9 +889,18 @@
         loadedImage = img;
         $('imgPreview').src = e.target.result;
         $('imgPreview').style.display = 'block';
-        $('imgInfo').textContent = `${img.naturalWidth}×${img.naturalHeight}px — ready to render`;
-        $('btnRenderImage').disabled = false;
         autoDetectInvert(img);
+        // Same fix as the text-typing feature: fit a mismatched aspect ratio
+        // into the default grid wastes most of the time budget as silent
+        // padding, which is also what was crushing detail (eyes/mouth) out
+        // of the smiley — auto-match Time columns to this image's actual
+        // proportions against the current Frequency rows.
+        const rowsSetting = parseInt($('imgRows').value,10) || 64;
+        const neededCols = Math.round(rowsSetting * (img.naturalHeight/img.naturalWidth));
+        const clampedCols = Math.max(20, Math.min(400, neededCols));
+        $('imgCols').value = clampedCols;
+        $('imgInfo').textContent = `${img.naturalWidth}×${img.naturalHeight}px — time columns auto-set to ${clampedCols} to match, ready to render`;
+        $('btnRenderImage').disabled = false;
         updateDurationEstimate();
       };
       img.src = e.target.result;
@@ -1075,7 +1086,13 @@
     const totalSamples = totalHops*hop + N;
     const out = new Float32Array(totalSamples);
     const win = new Float32Array(N);
-    for(let i=0;i<N;i++) win[i] = 0.5 - 0.5*Math.cos(2*Math.PI*i/(N-1));
+    // Periodic Hann (denominator N, not N-1) — this is what actually
+    // satisfies the constant-overlap-add condition at 50% hop. Using the
+    // "symmetric" Hann formula here was the bug behind the concentric
+    // ripple/comb pattern: overlapping symmetric windows don't sum to a
+    // constant, so the reconstruction gets a periodic amplitude modulation
+    // stamped across the whole image.
+    for(let i=0;i<N;i++) win[i] = 0.5 - 0.5*Math.cos(2*Math.PI*i/N);
 
     const binHz = sr/N;
     const minBin = minF/binHz, maxBin = Math.min(N/2, maxF/binHz);
@@ -1330,7 +1347,19 @@
   bindRange('driveSlider', v=>{ S.drive = v/100; $('driveVal').textContent = v+'%'; });
 
   ['imgCols','imgFrame'].forEach(id=> $(id).addEventListener('input', updateDurationEstimate));
-  bindRange('imgFrame', v=>{ $('imgFrameVal').textContent = v.toFixed(2)+' s'; updateDurationEstimate(); });
+  const speedNamesTx = v => v<=0.05?'Fast':v<=0.09?'Normal':v<=0.15?'Relaxed':'Slow';
+  bindRange('imgFrame', v=>{
+    $('imgFrameVal').textContent = v.toFixed(2)+' s';
+    $('txSpeedSlider').value = v;
+    $('txSpeedVal').textContent = `${speedNamesTx(v)} — ${v.toFixed(2)}s/column`;
+    updateDurationEstimate();
+  });
+  bindRange('txSpeedSlider', v=>{
+    $('imgFrame').value = v;
+    $('imgFrameVal').textContent = v.toFixed(2)+' s';
+    $('txSpeedVal').textContent = `${speedNamesTx(v)} — ${v.toFixed(2)}s/column`;
+    updateDurationEstimate();
+  });
   bindRange('imgGamma', v=>{ $('imgGammaVal').textContent = v.toFixed(1); });
 
   bindRange('tuneFreq', v=>{ $('tuneFreqVal').textContent = Math.round(v)+' Hz'; });
