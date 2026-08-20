@@ -358,6 +358,8 @@
       <label class="field">PTT method</label>
       <select id="pttMethod">
         <option value="cat" selected>CI-V command (1C 00 — rig TX on/off)</option>
+        <option value="rts">Serial RTS line (hardware PTT)</option>
+        <option value="dtr">Serial DTR line (hardware PTT)</option>
         <option value="hid">WebHID GPIO (experimental, unconfirmed on DE‑19)</option>
       </select>
       <label class="field">HID GPIO bit for PTT (if using WebHID)</label>
@@ -367,7 +369,7 @@
         <option value="3">GPIO 3 (0x04)</option>
         <option value="4">GPIO 4 (0x08)</option>
       </select>
-      <div class="hint">The G90 speaks Icom CI-V (it CATs as an IC‑7100/IC‑756PRO clone), hex addresses shown without the "0x" — default rig address <b>70</b>, controller <b>E0</b>, 19200 baud. The DE‑19's 4‑pin "PA" port is a TX/BAND/ALC keying <i>output</i> for an amplifier, not a computer‑to‑radio PTT input, so CI‑V command PTT is the reliable option here; WebHID GPIO PTT is kept as a fallback in case your interface's chipset happens to support it, but isn't confirmed for the DE‑19.</div>
+      <div class="hint">The G90 speaks Icom CI-V (it CATs as an IC‑7100/IC‑756PRO clone), hex addresses shown without the "0x" — default rig address <b>70</b>, controller <b>E0</b>, 19200 baud. The DE‑19's 4‑pin "PA" port is a TX/BAND/ALC keying <i>output</i> for an amplifier, not a computer‑to‑radio PTT input. If CI‑V PTT doesn't key the rig, your interface may instead expect a hardware RTS or DTR toggle — try those options above. RTS/DTR are always forced low the instant CAT connects, specifically so opening the port itself can't accidentally key the transmitter.</div>
       <div class="hint warn">Xiegu's own CAT guide notes that leaving a polling CAT program connected and then power-cycling the G90 can be misread as the firmware‑update key combo — disconnect CAT software when you're done.</div>
     </div>
 
@@ -490,11 +492,22 @@
         parity: 'none',
       });
       S.port = port;
+      // Opening a serial port commonly asserts RTS/DTR HIGH by default at the
+      // driver level. Many cheap CAT/audio interfaces (Xiegu CE-19/DE-19
+      // family included) wire RTS as a hardware PTT line — so without this,
+      // the instant the port opens, the interface reads "key transmitter"
+      // before any CAT command has been sent. De-assert both immediately.
+      try{
+        await port.setSignals({dataTerminalReady:false, requestToSend:false});
+      }catch(err){
+        console.warn('setSignals not supported / failed — RTS/DTR state on connect is undefined on this platform', err);
+      }
       S.catWriter = port.writable.getWriter();
       S.catReader = port.readable.getReader();
       $('btnCat').classList.add('connected');
       $('catState').textContent = 'connected · ' + $('catBaud').value + ' baud';
       setDot('dotCat','on');
+      $('btnPanicRelease').style.display = 'block';
     }catch(err){
       console.error(err);
       alert('CAT connection failed or was cancelled: '+err.message);
@@ -565,6 +578,14 @@
     if(!S.catWriter) return;
     // Icom transceive TX ON/OFF: cmd 0x1C 0x00, data 0x01 (on) / 0x00 (off)
     await catSend(civFrame([0x1C,0x00], [on ? 0x01 : 0x00]));
+  }
+
+  async function serialLinePTT(on, line){
+    if(!S.port) return;
+    const signals = line === 'dtr'
+      ? {dataTerminalReady: on}
+      : {requestToSend: on};
+    await S.port.setSignals(signals);
   }
 
   $('btnCat').addEventListener('click', connectCAT);
@@ -941,6 +962,7 @@
     }
     try{
       if(S.pttMethod === 'hid') await hidPTT(true);
+      else if(S.pttMethod === 'rts' || S.pttMethod === 'dtr') await serialLinePTT(true, S.pttMethod);
       else await catPTT(true);
     }catch(err){
       console.error('PTT engage failed', err);
@@ -961,11 +983,13 @@
     // state (or a retry) stuck showing TX.
     try{
       if(S.pttMethod === 'hid') await hidPTT(false);
+      else if(S.pttMethod === 'rts' || S.pttMethod === 'dtr') await serialLinePTT(false, S.pttMethod);
       else await catPTT(false);
     }catch(err){
       console.error('PTT release failed — retrying once', err);
       try{
         if(S.pttMethod === 'hid') await hidPTT(false);
+        else if(S.pttMethod === 'rts' || S.pttMethod === 'dtr') await serialLinePTT(false, S.pttMethod);
         else await catPTT(false);
       }catch(err2){ console.error('PTT release retry also failed', err2); }
     }finally{
@@ -989,7 +1013,15 @@
   document.addEventListener('visibilitychange', ()=>{ if(document.hidden) disablePTT(); });
 
   // Visible panic button — always available the moment PTT is engaged.
-  $('btnPanicRelease').addEventListener('click', ()=>{ stopTune(); disablePTT(); });
+  $('btnPanicRelease').addEventListener('click', async ()=>{
+    stopTune();
+    await disablePTT();
+    // Belt and braces: force every possible keying mechanism low, in case
+    // the active pttMethod isn't the one actually holding the rig keyed.
+    try{ if(S.port) await S.port.setSignals({dataTerminalReady:false, requestToSend:false}); }catch(e){}
+    try{ if(S.hid) await hidPTT(false); }catch(e){}
+    try{ if(S.catWriter) await catPTT(false); }catch(e){}
+  });
 
   // =====================================================================
   // TEST TUNE — constant carrier
