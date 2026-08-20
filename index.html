@@ -947,9 +947,22 @@
     const canvasImg = renderTextToCanvas(txt);
     loadedImage = canvasImg;
     $('imgInvert').checked = false; // rendered text is always white-on-black already
+
+    // Text is naturally landscape (wide, short) but the default grid
+    // (Frequency rows × Time columns) is portrait-shaped — fitting a
+    // landscape image into a portrait box wastes most of the time budget as
+    // silent padding, which is what compresses the letters into a thin,
+    // hard-to-read band. Auto-adjust Time columns to match this text's
+    // actual proportions against the current Frequency rows, so it fills
+    // the transmission instead of mostly padding it.
+    const rowsSetting = parseInt($('imgRows').value,10) || 64;
+    const neededCols = Math.round(rowsSetting * (canvasImg.height/canvasImg.width));
+    const clampedCols = Math.max(20, Math.min(400, neededCols));
+    $('imgCols').value = clampedCols;
+
     $('imgPreview').src = canvasImg.toDataURL();
     $('imgPreview').style.display = 'block';
-    $('imgInfo').textContent = `Text: "${txt}" — ready to render`;
+    $('imgInfo').textContent = `Text: "${txt}" — time columns auto-set to ${clampedCols} to match, ready to render`;
     $('btnRenderImage').disabled = false;
     updateDurationEstimate();
   });
