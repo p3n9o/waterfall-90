@@ -241,6 +241,7 @@
       <div class="panel">
         <h3>PTT &amp; Drive</h3>
         <button class="btn btn-primary" id="btnPtt">PTT — hold to transmit</button>
+        <button class="btn" id="btnPanicRelease" style="display:none;margin-top:8px;border-color:var(--red);color:var(--red);justify-content:center;">⏹ Force PTT release</button>
         <label class="field">Mic / drive gain fed to radio <span class="range-val" id="driveVal">50%</span></label>
         <input type="range" id="driveSlider" min="0" max="100" value="50">
         <div class="meter"><div class="fill" id="txMeter"></div></div>
@@ -615,6 +616,7 @@
   async function connectAudio(){
     try{
       S.audioCtx = S.audioCtx || new (window.AudioContext||window.webkitAudioContext)();
+      if(S.audioCtx.state === 'suspended') await S.audioCtx.resume();
       S.micStream = await navigator.mediaDevices.getUserMedia({audio:{
         deviceId: $('audioInSelect').value ? {exact:$('audioInSelect').value} : undefined,
         echoCancellation:false, noiseSuppression:false, autoGainControl:false,
@@ -911,30 +913,83 @@
   $('btnTxImage').addEventListener('click', async ()=>{
     if(!S.renderedBuffer) return;
     await enablePTT();
-    const src = playBuffer(S.renderedBuffer, true);
-    src.onended = ()=> disablePTT();
+    try{
+      const src = playBuffer(S.renderedBuffer, true);
+      src.onended = ()=> disablePTT();
+      // Belt-and-braces: also release a moment after the buffer's expected
+      // duration, in case onended never fires (e.g. context stayed suspended).
+      const expectedMs = (S.renderedBuffer.duration*1000) + 1500;
+      setTimeout(()=>{ if($('vfoRxTx').textContent==='TX') disablePTT(); }, expectedMs);
+    }catch(err){
+      console.error('Image transmit failed to start', err);
+      disablePTT();
+    }
   });
 
   // =====================================================================
   // PTT unified control
   // =====================================================================
+  let pttSafetyTimer = null;
+  const PTT_SAFETY_MS = 120000; // hard auto-release after 2 min, regardless of what else goes wrong
+
   async function enablePTT(){
-    if(S.pttMethod === 'hid') await hidPTT(true);
-    else await catPTT(true);
+    // A suspended AudioContext is the #1 cause of "stuck on transmit": if the
+    // context never resumes, a buffer's onended callback (which releases PTT
+    // after an image TX) never fires. Always resume before keying up.
+    if(S.audioCtx && S.audioCtx.state === 'suspended'){
+      try{ await S.audioCtx.resume(); }catch(e){ console.warn('audioCtx.resume failed', e); }
+    }
+    try{
+      if(S.pttMethod === 'hid') await hidPTT(true);
+      else await catPTT(true);
+    }catch(err){
+      console.error('PTT engage failed', err);
+    }
     $('vfoRxTx').textContent = 'TX';
     $('vfoRxTx').style.color = 'var(--red)';
+    $('btnPanicRelease').style.display = 'block';
+    clearTimeout(pttSafetyTimer);
+    pttSafetyTimer = setTimeout(()=>{
+      console.warn('PTT safety timeout hit — forcing release');
+      disablePTT();
+    }, PTT_SAFETY_MS);
   }
+
   async function disablePTT(){
-    if(S.pttMethod === 'hid') await hidPTT(false);
-    else await catPTT(false);
-    $('vfoRxTx').textContent = 'RX';
-    $('vfoRxTx').style.color = '';
+    clearTimeout(pttSafetyTimer);
+    // try/finally so a failed CAT/HID write can never leave the on-screen
+    // state (or a retry) stuck showing TX.
+    try{
+      if(S.pttMethod === 'hid') await hidPTT(false);
+      else await catPTT(false);
+    }catch(err){
+      console.error('PTT release failed — retrying once', err);
+      try{
+        if(S.pttMethod === 'hid') await hidPTT(false);
+        else await catPTT(false);
+      }catch(err2){ console.error('PTT release retry also failed', err2); }
+    }finally{
+      $('vfoRxTx').textContent = 'RX';
+      $('vfoRxTx').style.color = '';
+      $('btnPanicRelease').style.display = 'none';
+    }
   }
 
   const pttBtn = $('btnPtt');
   pttBtn.addEventListener('mousedown', enablePTT);
   pttBtn.addEventListener('touchstart', e=>{e.preventDefault(); enablePTT();});
-  ['mouseup','mouseleave','touchend'].forEach(evt=> pttBtn.addEventListener(evt, disablePTT));
+  ['mouseup','mouseleave','touchend','touchcancel'].forEach(evt=> pttBtn.addEventListener(evt, disablePTT));
+
+  // Safety net: if the pointer is released or dragged off the button, or the
+  // tab loses focus/visibility, or you close/hide the app while keyed, force
+  // PTT off rather than trusting only the button's own events.
+  window.addEventListener('mouseup', disablePTT);
+  window.addEventListener('touchend', disablePTT);
+  window.addEventListener('blur', disablePTT);
+  document.addEventListener('visibilitychange', ()=>{ if(document.hidden) disablePTT(); });
+
+  // Visible panic button — always available the moment PTT is engaged.
+  $('btnPanicRelease').addEventListener('click', ()=>{ stopTune(); disablePTT(); });
 
   // =====================================================================
   // TEST TUNE — constant carrier
