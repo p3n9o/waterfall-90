@@ -415,6 +415,15 @@
         <span>Invert (dark subject on light background)</span>
         <input type="checkbox" id="imgInvert" style="width:auto;accent-color:var(--phosphor);">
       </label>
+      <label class="field" style="display:flex;align-items:center;justify-content:space-between;margin-top:10px;">
+        <span>Flip horizontal (mirror left↔right)</span>
+        <input type="checkbox" id="imgFlipH" style="width:auto;accent-color:var(--phosphor);">
+      </label>
+      <label class="field" style="display:flex;align-items:center;justify-content:space-between;margin-top:10px;">
+        <span>Flip vertical (mirror top↔bottom)</span>
+        <input type="checkbox" id="imgFlipV" style="width:auto;accent-color:var(--phosphor);">
+      </label>
+      <div class="hint">Flips apply to the rendered transmission only (the thumbnail preview above stays as-loaded), so you can compare orientation against how a receiving station's waterfall actually draws it.</div>
       <div class="hint">Bright pixels are transmitted as "on" tones — correct for light text/shapes on a dark photo. Most ordinary photos (dark ink on paper, a printed page) are the opposite, so this is auto-ticked when an uploaded photo's average brightness looks light-background; override it if the result looks backwards.</div>
       <div class="hint" id="imgDurationHint">Estimated transmit time: ~12.6 s</div>
     </div>
@@ -984,7 +993,7 @@
     $('imgDurationHint').textContent = `Estimated transmit time: ~${(cols*frame).toFixed(1)} s`;
   }
 
-  function imageToMatrix(img, cols, rows, gamma, invert){
+  function imageToMatrix(img, cols, rows, gamma, invert, flipH, flipV){
     // The receive waterfall plots frequency HORIZONTALLY and time VERTICALLY
     // (top = earliest, bottom = most recent) — the usual ham-radio waterfall
     // convention (WSJT-X/fldigi-style), not the audio-engineering spectrogram
@@ -1005,7 +1014,19 @@
     const fitScale = Math.min(rows/iw, cols/ih);
     const dw = iw*fitScale, dh = ih*fitScale;
     const dx = (rows-dw)/2, dy = (cols-dh)/2;
+
+    // Flip H mirrors along the frequency axis (left↔right in the
+    // waterfall), flip V mirrors along the time axis (top↔bottom, i.e.
+    // which end of the image is transmitted first). Applied as a full
+    // canvas-space transform before drawing so it works regardless of the
+    // letterbox offset above.
+    octx.save();
+    if(flipH || flipV){
+      octx.translate(flipH ? rows : 0, flipV ? cols : 0);
+      octx.scale(flipH ? -1 : 1, flipV ? -1 : 1);
+    }
     octx.drawImage(img, dx, dy, dw, dh);
+    octx.restore();
 
     const data = octx.getImageData(0,0,rows,cols).data;
     const matrix = []; // matrix[freqRow][timeCol] = 0..1 brightness
@@ -1066,10 +1087,12 @@
     const frameSec = parseFloat($('imgFrame').value);
     const gamma = parseFloat($('imgGamma').value);
     const invert = $('imgInvert').checked;
+    const flipH = $('imgFlipH').checked;
+    const flipV = $('imgFlipV').checked;
     const minF = S.waterfall.min, maxF = S.waterfall.max;
     const sr = S.audioCtx.sampleRate;
 
-    const matrix = imageToMatrix(loadedImage, cols, rows, gamma, invert);
+    const matrix = imageToMatrix(loadedImage, cols, rows, gamma, invert, flipH, flipV);
 
     // ---- Inverse-STFT / overlap-add synthesis -------------------------
     // Instead of switching discrete tones on and off (which splatters
