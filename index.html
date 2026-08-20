@@ -409,6 +409,11 @@
       <input type="range" id="imgFrame" min="0.03" max="0.3" step="0.01" value="0.09">
       <label class="field">Brightness curve (gamma) <span class="range-val" id="imgGammaVal">1.0</span></label>
       <input type="range" id="imgGamma" min="0.4" max="2.5" step="0.1" value="1.0">
+      <label class="field" style="display:flex;align-items:center;justify-content:space-between;margin-top:14px;">
+        <span>Invert (dark subject on light background)</span>
+        <input type="checkbox" id="imgInvert" style="width:auto;accent-color:var(--phosphor);">
+      </label>
+      <div class="hint">Bright pixels are transmitted as "on" tones — correct for light text/shapes on a dark photo. Most ordinary photos (dark ink on paper, a printed page) are the opposite, so this is auto-ticked when an uploaded photo's average brightness looks light-background; override it if the result looks backwards.</div>
       <div class="hint" id="imgDurationHint">Estimated transmit time: ~12.6 s</div>
     </div>
 
@@ -884,11 +889,29 @@
         $('imgPreview').style.display = 'block';
         $('imgInfo').textContent = `${img.naturalWidth}×${img.naturalHeight}px — ready to render`;
         $('btnRenderImage').disabled = false;
+        autoDetectInvert(img);
         updateDurationEstimate();
       };
       img.src = e.target.result;
     };
     reader.readAsDataURL(file);
+  }
+
+  function autoDetectInvert(img){
+    // A typical photo of dark text on a light background (paper, a screen,
+    // a whiteboard) has an average brightness well above 50% — but this
+    // encoder treats bright pixels as "signal on", so it would transmit the
+    // background instead of the subject. Pre-tick Invert automatically when
+    // the source looks light-background; the person can still override it.
+    const s = document.createElement('canvas');
+    s.width = 40; s.height = 40;
+    const sx = s.getContext('2d');
+    sx.drawImage(img, 0, 0, 40, 40);
+    const d = sx.getImageData(0,0,40,40).data;
+    let sum = 0;
+    for(let i=0;i<d.length;i+=4){ sum += (0.299*d[i]+0.587*d[i+1]+0.114*d[i+2]); }
+    const meanBrightness = sum / (d.length/4) / 255;
+    $('imgInvert').checked = meanBrightness > 0.5;
   }
 
   $('dropZone').addEventListener('click', ()=>$('fileInput').click());
@@ -923,6 +946,7 @@
     if(!txt) return;
     const canvasImg = renderTextToCanvas(txt);
     loadedImage = canvasImg;
+    $('imgInvert').checked = false; // rendered text is always white-on-black already
     $('imgPreview').src = canvasImg.toDataURL();
     $('imgPreview').style.display = 'block';
     $('imgInfo').textContent = `Text: "${txt}" — ready to render`;
@@ -936,24 +960,37 @@
     $('imgDurationHint').textContent = `Estimated transmit time: ~${(cols*frame).toFixed(1)} s`;
   }
 
-  function imageToMatrix(img, cols, rows, gamma){
+  function imageToMatrix(img, cols, rows, gamma, invert){
     // The receive waterfall plots frequency HORIZONTALLY and time VERTICALLY
     // (top = earliest, bottom = most recent) — the usual ham-radio waterfall
     // convention (WSJT-X/fldigi-style), not the audio-engineering spectrogram
     // convention (time horizontal). So the source image must be sampled onto
-    // a canvas sized width=rows (frequency axis) x height=cols (time axis),
-    // NOT width=cols x height=rows, or the picture comes out rotated 90°.
+    // a canvas sized width=rows (frequency axis) x height=cols (time axis).
     const off = document.createElement('canvas');
     off.width = rows; off.height = cols;
     const octx = off.getContext('2d');
-    octx.drawImage(img, 0, 0, rows, cols);
+    octx.fillStyle = '#000';
+    octx.fillRect(0, 0, rows, cols); // black = silence, used as letterbox padding below
+
+    // Fit the source image into the rows×cols box preserving its aspect
+    // ratio (letterbox/pillarbox with silent padding) instead of stretching
+    // it to fill both dimensions exactly — a straight stretch is what turns
+    // a wide photo squeezed into a tall narrow grid into an unrecognisable
+    // smear.
+    const iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height;
+    const fitScale = Math.min(rows/iw, cols/ih);
+    const dw = iw*fitScale, dh = ih*fitScale;
+    const dx = (rows-dw)/2, dy = (cols-dh)/2;
+    octx.drawImage(img, dx, dy, dw, dh);
+
     const data = octx.getImageData(0,0,rows,cols).data;
     const matrix = []; // matrix[freqRow][timeCol] = 0..1 brightness
     for(let r=0;r<rows;r++) matrix[r] = new Float32Array(cols);
     for(let c=0;c<cols;c++){
       for(let r=0;r<rows;r++){
         const idx = (c*rows+r)*4;
-        const gray = (0.299*data[idx] + 0.587*data[idx+1] + 0.114*data[idx+2]) / 255;
+        let gray = (0.299*data[idx] + 0.587*data[idx+1] + 0.114*data[idx+2]) / 255;
+        if(invert) gray = 1 - gray;
         matrix[r][c] = Math.pow(gray, gamma);
       }
     }
@@ -968,12 +1005,13 @@
     const rows = parseInt($('imgRows').value,10);
     const frameSec = parseFloat($('imgFrame').value);
     const gamma = parseFloat($('imgGamma').value);
+    const invert = $('imgInvert').checked;
     const minF = S.waterfall.min, maxF = S.waterfall.max;
     const sr = S.audioCtx.sampleRate;
     const samplesPerFrame = Math.round(frameSec*sr);
     const totalSamples = samplesPerFrame*cols;
 
-    const matrix = imageToMatrix(loadedImage, cols, rows, gamma);
+    const matrix = imageToMatrix(loadedImage, cols, rows, gamma, invert);
     const freqs = new Float32Array(rows);
     for(let r=0;r<rows;r++){
       // r now indexes the horizontal axis of the resized image (left→right),
