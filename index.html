@@ -254,7 +254,7 @@
     <div>
       <div class="scope-wrap">
         <div class="scope-head">
-          <h3 style="margin:0;">Waterfall — receive</h3>
+          <h3 style="margin:0;">Waterfall — receive<span id="scopeTxBadge" style="display:none;color:var(--red);font-family:var(--mono);font-size:10px;letter-spacing:.08em;margin-left:10px;">● TRANSMITTING</span></h3>
           <div class="btn-row" style="width:auto;">
             <button class="btn" id="btnStartWaterfall" style="width:auto;">▶ Start</button>
           </div>
@@ -268,6 +268,10 @@
         <div class="drop-zone" id="dropZone">
           Click or drop a photo — it will be rendered into the waterfall as it transmits.
           <input type="file" id="fileInput" accept="image/*">
+        </div>
+        <div class="freq-input" style="margin-top:10px;">
+          <input type="text" id="textInput" placeholder="…or type text to send as waterfall text instead">
+          <button id="btnRenderText">Use text</button>
         </div>
         <div class="preview-row">
           <img id="imgPreview">
@@ -394,6 +398,10 @@
           <label class="field">Frequency rows</label>
           <input class="textfield" type="number" id="imgRows" value="64" min="16" max="200">
         </div>
+      </div>
+      <div class="hint">
+        <b>Time columns</b> — how many time-steps the image is divided into along its playback duration. Higher = smoother horizontal (time-axis) detail but a longer transmission.<br>
+        <b>Frequency rows</b> — how many distinct tones make up the audio passband width. Higher = finer left-right picture detail, but each tone gets a narrower slice of the Min/Max frequency range above, so very high values can sound muddier on a narrow passband.
       </div>
       <label class="field">Seconds per column <span class="range-val" id="imgFrameVal">0.09 s</span></label>
       <input type="range" id="imgFrame" min="0.03" max="0.3" step="0.01" value="0.09">
@@ -782,6 +790,69 @@
     ctx.drawImage(rowCanvas, 0, 0, span, 1, 0, h-speedPx, w, speedPx);
   }
 
+  // =====================================================================
+  // TX PREVIEW — while transmitting an image/text, the mic usually isn't
+  // hearing our own signal, so the live receive waterfall has nothing to
+  // show. Instead, render what we're SENDING onto the same canvas, using
+  // the exact same axis convention (frequency horizontal, time vertical,
+  // growing from the bottom) so it looks like a continuation of the real
+  // waterfall rather than a different view.
+  // =====================================================================
+  function buildTxPreviewCanvas(matrix, rows, cols, paletteName){
+    const c = document.createElement('canvas');
+    c.width = rows; c.height = cols;
+    const cx = c.getContext('2d');
+    const imgData = cx.createImageData(rows, cols);
+    for(let t=0; t<cols; t++){
+      for(let f=0; f<rows; f++){
+        const v = matrix[f][t];
+        const [r,g,b] = palette(v, paletteName);
+        const idx = (t*rows+f)*4;
+        imgData.data[idx]=r; imgData.data[idx+1]=g; imgData.data[idx+2]=b; imgData.data[idx+3]=255;
+      }
+    }
+    cx.putImageData(imgData,0,0);
+    return c;
+  }
+
+  function startTxPreview(matrix, rows, cols, durationMs){
+    if(!matrix) return;
+    S.txPreviewCanvas = buildTxPreviewCanvas(matrix, rows, cols, S.waterfall.palette);
+    S.txPreviewCols = cols;
+    S.txStartTime = performance.now();
+    S.txDurationMs = Math.max(1, durationMs);
+    S.wasWaterfallRunning = S.waterfall.running;
+    S.waterfall.running = false; // pause the live receive loop while we own the canvas
+    S.txPreviewActive = true;
+    $('scopeTxBadge').style.display = 'inline';
+    animateTxPreview();
+  }
+
+  function stopTxPreview(){
+    S.txPreviewActive = false;
+    $('scopeTxBadge').style.display = 'none';
+    if(S.wasWaterfallRunning){
+      S.waterfall.running = true;
+      animateWaterfall();
+    }
+  }
+
+  function animateTxPreview(){
+    if(!S.txPreviewActive) return;
+    requestAnimationFrame(animateTxPreview);
+    const w = canvas.width, h = canvas.height;
+    const elapsed = performance.now() - S.txStartTime;
+    const progress = Math.min(1, elapsed / S.txDurationMs);
+    const revealedRows = Math.max(1, Math.ceil(progress * S.txPreviewCols));
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0,0,w,h);
+    ctx.imageSmoothingEnabled = false;
+    const destH = Math.max(1, Math.round((revealedRows/S.txPreviewCols) * h));
+    // anchor to the bottom and grow upward, matching the live loop's
+    // "newest data enters at the bottom" convention
+    ctx.drawImage(S.txPreviewCanvas, 0, 0, S.txPreviewCanvas.width, revealedRows, 0, h-destH, w, destH);
+  }
+
   $('btnStartWaterfall').addEventListener('click', ()=>{
     if(!S.analyser){ alert('Connect DE‑19 audio first.'); return; }
     S.waterfall.running = !S.waterfall.running;
@@ -828,6 +899,35 @@
     });
   });
 
+  function renderTextToCanvas(text){
+    const c = document.createElement('canvas');
+    const fontSize = 90;
+    const measure = c.getContext('2d');
+    measure.font = `bold ${fontSize}px 'JetBrains Mono', monospace`;
+    const textWidth = Math.ceil(measure.measureText(text || ' ').width);
+    c.width = Math.max(120, textWidth + fontSize);
+    c.height = Math.round(fontSize*1.6);
+    const cx = c.getContext('2d');
+    cx.fillStyle = '#000'; cx.fillRect(0,0,c.width,c.height);
+    cx.fillStyle = '#fff';
+    cx.font = `bold ${fontSize}px 'JetBrains Mono', monospace`;
+    cx.textBaseline = 'middle';
+    cx.fillText(text, fontSize*0.4, c.height/2);
+    return c;
+  }
+
+  $('btnRenderText').addEventListener('click', ()=>{
+    const txt = $('textInput').value.trim();
+    if(!txt) return;
+    const canvasImg = renderTextToCanvas(txt);
+    loadedImage = canvasImg;
+    $('imgPreview').src = canvasImg.toDataURL();
+    $('imgPreview').style.display = 'block';
+    $('imgInfo').textContent = `Text: "${txt}" — ready to render`;
+    $('btnRenderImage').disabled = false;
+    updateDurationEstimate();
+  });
+
   function updateDurationEstimate(){
     const cols = parseInt($('imgCols').value,10);
     const frame = parseFloat($('imgFrame').value);
@@ -835,20 +935,25 @@
   }
 
   function imageToMatrix(img, cols, rows, gamma){
+    // The receive waterfall plots frequency HORIZONTALLY and time VERTICALLY
+    // (top = earliest, bottom = most recent) — the usual ham-radio waterfall
+    // convention (WSJT-X/fldigi-style), not the audio-engineering spectrogram
+    // convention (time horizontal). So the source image must be sampled onto
+    // a canvas sized width=rows (frequency axis) x height=cols (time axis),
+    // NOT width=cols x height=rows, or the picture comes out rotated 90°.
     const off = document.createElement('canvas');
-    off.width = cols; off.height = rows;
+    off.width = rows; off.height = cols;
     const octx = off.getContext('2d');
-    octx.drawImage(img, 0, 0, cols, rows);
-    const data = octx.getImageData(0,0,cols,rows).data;
-    const matrix = []; // matrix[row][col] = 0..1 brightness, row 0 = top = high freq
-    for(let r=0;r<rows;r++){
-      const rowArr = new Float32Array(cols);
-      for(let c=0;c<cols;c++){
-        const idx = (r*cols+c)*4;
+    octx.drawImage(img, 0, 0, rows, cols);
+    const data = octx.getImageData(0,0,rows,cols).data;
+    const matrix = []; // matrix[freqRow][timeCol] = 0..1 brightness
+    for(let r=0;r<rows;r++) matrix[r] = new Float32Array(cols);
+    for(let c=0;c<cols;c++){
+      for(let r=0;r<rows;r++){
+        const idx = (c*rows+r)*4;
         const gray = (0.299*data[idx] + 0.587*data[idx+1] + 0.114*data[idx+2]) / 255;
-        rowArr[c] = Math.pow(gray, gamma);
+        matrix[r][c] = Math.pow(gray, gamma);
       }
-      matrix[r] = rowArr;
     }
     return matrix;
   }
@@ -869,8 +974,11 @@
     const matrix = imageToMatrix(loadedImage, cols, rows, gamma);
     const freqs = new Float32Array(rows);
     for(let r=0;r<rows;r++){
-      // row 0 (top of image) maps to max frequency, bottom to min
-      freqs[r] = maxF - (r/(rows-1))*(maxF-minF);
+      // r now indexes the horizontal axis of the resized image (left→right),
+      // which must map to increasing frequency to match the receive
+      // waterfall's left=min/right=max convention — otherwise the picture
+      // is mirrored left-right.
+      freqs[r] = minF + (r/(rows-1))*(maxF-minF);
     }
 
     const buffer = S.audioCtx.createBuffer(1, totalSamples, sr);
@@ -908,6 +1016,7 @@
     setTimeout(()=>{ $('txProgressTrack').style.display='none'; $('txProgressFill').style.width='0%'; }, 400);
 
     S.renderedBuffer = buffer;
+    S.lastMatrix = matrix; S.lastMatrixRows = rows; S.lastMatrixCols = cols;
     $('btnPreviewImage').disabled = false;
     $('btnTxImage').disabled = false;
     $('imgInfo').textContent = `Rendered: ${cols}×${rows}, ${(totalSamples/sr).toFixed(1)}s @ ${sr}Hz`;
@@ -934,16 +1043,21 @@
   $('btnTxImage').addEventListener('click', async ()=>{
     if(!S.renderedBuffer) return;
     await enablePTT();
+    startTxPreview(S.lastMatrix, S.lastMatrixRows, S.lastMatrixCols, S.renderedBuffer.duration*1000);
     try{
       const src = playBuffer(S.renderedBuffer, true);
-      src.onended = ()=> disablePTT();
+      src.onended = ()=> { disablePTT(); stopTxPreview(); };
       // Belt-and-braces: also release a moment after the buffer's expected
       // duration, in case onended never fires (e.g. context stayed suspended).
       const expectedMs = (S.renderedBuffer.duration*1000) + 1500;
-      setTimeout(()=>{ if($('vfoRxTx').textContent==='TX') disablePTT(); }, expectedMs);
+      setTimeout(()=>{
+        if($('vfoRxTx').textContent==='TX') disablePTT();
+        stopTxPreview();
+      }, expectedMs);
     }catch(err){
       console.error('Image transmit failed to start', err);
       disablePTT();
+      stopTxPreview();
     }
   });
 
@@ -1015,6 +1129,7 @@
   // Visible panic button — always available the moment PTT is engaged.
   $('btnPanicRelease').addEventListener('click', async ()=>{
     stopTune();
+    stopTxPreview();
     await disablePTT();
     // Belt and braces: force every possible keying mechanism low, in case
     // the active pttMethod isn't the one actually holding the rig keyed.
