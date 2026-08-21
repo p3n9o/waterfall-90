@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SHACK-90 · G90 Waterfall Control</title>
+<title>waterfall-90 · G90 Waterfall Image</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
@@ -187,7 +187,7 @@
 
 <div class="topbar">
   <div class="brand">
-    <span class="mark">SHACK‑90</span>
+    <span class="mark">waterfall‑90</span>
     <span class="sub">Xiegu G90 · DE‑19 waterfall console</span>
   </div>
   <div class="status-strip">
@@ -439,7 +439,7 @@
   </div>
 </div>
 
-<footer>SHACK‑90 runs entirely client-side · Web Serial / WebHID / Web Audio · no data leaves this page · check your amateur licence conditions before transmitting</footer>
+<footer>waterfall‑90 runs entirely client-side · Web Serial / WebHID / Web Audio · no data leaves this page · check your amateur licence conditions before transmitting</footer>
 
 <script>
 (() => {
@@ -1227,7 +1227,10 @@
 
   $('btnTxImage').addEventListener('click', async ()=>{
     if(!S.renderedBuffer) return;
-    await enablePTT();
+    // Give the safety timer enough headroom to cover the whole rendered
+    // buffer (plus a margin for scheduling/output latency) so long images
+    // at slow transmit speeds don't get their PTT yanked mid-picture.
+    await enablePTT(S.renderedBuffer.duration*1000 + 3000);
     startTxPreview(S.lastMatrix, S.lastMatrixRows, S.lastMatrixCols, S.renderedBuffer.duration*1000);
     try{
       const src = playBuffer(S.renderedBuffer, true);
@@ -1250,9 +1253,9 @@
   // PTT unified control
   // =====================================================================
   let pttSafetyTimer = null;
-  const PTT_SAFETY_MS = 120000; // hard auto-release after 2 min, regardless of what else goes wrong
+  const PTT_SAFETY_MS = 120000; // default auto-release cap (2 min) for open-ended keying, e.g. the manual PTT button
 
-  async function enablePTT(){
+  async function enablePTT(minHoldMs){
     // A suspended AudioContext is the #1 cause of "stuck on transmit": if the
     // context never resumes, a buffer's onended callback (which releases PTT
     // after an image TX) never fires. Always resume before keying up.
@@ -1270,10 +1273,17 @@
     $('vfoRxTx').style.color = 'var(--red)';
     $('btnPanicRelease').style.display = 'block';
     clearTimeout(pttSafetyTimer);
+    // The safety cap exists to rescue a "stuck on TX" state, not to cap a
+    // known-length transmission — a rendered image/tune tone can legitimately
+    // run past the default 2 min cap at slow transmit speeds or high
+    // resolution. Callers that know how long they need (image TX, tune) pass
+    // that duration in and the cap stretches to cover it, so it only ever
+    // acts as a genuine failsafe rather than an early cutoff.
+    const safetyMs = Math.max(PTT_SAFETY_MS, minHoldMs || 0);
     pttSafetyTimer = setTimeout(()=>{
       console.warn('PTT safety timeout hit — forcing release');
       disablePTT();
-    }, PTT_SAFETY_MS);
+    }, safetyMs);
   }
 
   async function disablePTT(){
@@ -1299,7 +1309,7 @@
   }
 
   const pttBtn = $('btnPtt');
-  pttBtn.addEventListener('mousedown', enablePTT);
+  pttBtn.addEventListener('mousedown', ()=>enablePTT());
   pttBtn.addEventListener('touchstart', e=>{e.preventDefault(); enablePTT();});
   ['mouseup','mouseleave','touchend','touchcancel'].forEach(evt=> pttBtn.addEventListener(evt, disablePTT));
 
@@ -1335,7 +1345,12 @@
     S.tuning = true;
     $('btnTune').textContent = '■ Stop carrier';
     $('btnTune').classList.add('active');
-    await enablePTT();
+    const timeoutSec = parseInt($('tuneTimeout').value,10);
+    // Read the configured cutoff before keying so the PTT safety cap can be
+    // stretched to match it — otherwise a tune timeout set near/above the
+    // default 2 min cap would get silently cut short by the safety timer
+    // instead of by the cutoff the person actually configured.
+    await enablePTT(timeoutSec*1000 + 2000);
 
     const freq = parseFloat($('tuneFreq').value);
     S.tuneOsc = S.audioCtx.createOscillator();
@@ -1346,7 +1361,6 @@
     if(S.outDest) S.tuneGain.connect(S.outDest); else S.tuneGain.connect(S.audioCtx.destination);
     S.tuneOsc.start();
 
-    const timeoutSec = parseInt($('tuneTimeout').value,10);
     S.tuneTimer = setTimeout(stopTune, timeoutSec*1000);
   }
 
