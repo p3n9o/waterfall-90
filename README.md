@@ -1,6 +1,6 @@
 # waterfall-90
 
-**A browser-based waterfall control console for the Xiegu G90 + DE‑19 digital interface.**
+**A Chromium browser-based waterfall control console for the Xiegu G90 + DE‑19 digital interface.**
 
 waterfall‑90 turns a Chromium-based browser tab into a lightweight CAT/PTT/waterfall control surface for the Xiegu G90 transceiver, using **Web Serial**, **WebHID**, and the **Web Audio API** to talk to the radio directly — no drivers, no desktop app, no data ever leaving the page. On top of standard rig control, it includes an experimental **image/text-to-waterfall transmitter** that converts a photo or a line of text into an audio spectrogram, so it redraws as a picture on a receiving station's waterfall display.
 
@@ -73,3 +73,4 @@ waterfall‑90 turns a Chromium-based browser tab into a lightweight CAT/PTT/wat
 ## Disclaimer
 
 This tool directly keys a transmitter. Always verify your station is operating within your licence class, band plan, and power limits before transmitting, and keep an eye on the ALC/TX meter when sending images to avoid splatter.
+This tool was made using Claude AI. Bugs may occur. Use this at your own will.
