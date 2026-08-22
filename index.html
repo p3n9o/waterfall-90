@@ -116,7 +116,10 @@
     font-family:var(--mono);text-align:right;background:#060706;
     border:1px solid var(--line);border-radius:4px;padding:12px 14px;margin-bottom:12px;
   }
-  .vfo .hz{font-size:28px;font-weight:600;color:var(--phosphor);text-shadow:0 0 10px rgba(143,255,138,.3);letter-spacing:.02em;}
+  .vfo .hz{font-size:28px;font-weight:600;color:var(--phosphor);text-shadow:0 0 10px rgba(143,255,138,.3);letter-spacing:.02em;cursor:ns-resize;user-select:none;}
+  .vfo .hz .freqDigit{padding:0 1px;border-radius:2px;transition:background .1s,color .1s;}
+  .vfo .hz .freqDigit:hover{background:rgba(143,255,138,.18);color:#fff;text-shadow:0 0 10px rgba(143,255,138,.7);}
+  .vfo .hz .freqSep{opacity:.6;}
   .vfo .unit{font-size:12px;color:var(--text-dim);margin-left:4px;}
   .vfo .mode-row{display:flex;justify-content:space-between;margin-top:6px;font-size:11px;color:var(--text-dim);}
   .freq-input{display:flex;gap:6px;margin-top:10px;}
@@ -229,16 +232,22 @@
       <div class="panel">
         <h3>VFO</h3>
         <div class="vfo">
-          <div><span class="hz" id="vfoHz">— — . — — — . — —</span><span class="unit">MHz</span></div>
+          <div><span class="hz" id="vfoHz">——.———.——</span></div>
           <div class="mode-row"><span id="vfoMode">MODE —</span><span id="vfoRxTx">RX</span></div>
         </div>
         <div class="freq-input">
-          <input type="text" id="freqSet" placeholder="e.g. 14.074000">
+          <input type="text" id="freqSet" placeholder="e.g. 14.074000 (MHz)">
           <button id="btnSetFreq">SET</button>
         </div>
         <div class="freq-input">
           <button id="btnReadFreq" style="flex:1;">↻ Read frequency from rig</button>
         </div>
+        <div class="btn-row" style="margin-top:10px;">
+          <button class="btn" id="btnVfoA">VFO A</button>
+          <button class="btn" id="btnVfoB">VFO B</button>
+        </div>
+        <button class="btn" id="btnVfoSwitch" style="margin-top:8px;justify-content:center;">⇄ Switch VFO A/B</button>
+        <div class="hint">Display groups digits as <b>MHz.kHz.tens-of-Hz</b> (e.g. <code>14.074.00</code>), matching the G90's own screen. The SET box still takes a plain decimal MHz value. Hover a digit in the display above and scroll to bump the frequency at that digit's place.</div>
       </div>
 
       <div class="panel">
@@ -262,6 +271,9 @@
         <div class="hint warn">A picture with many simultaneous "on" tones (dense letter strokes, filled shapes) reads much louder to the rig than a normal voice or FT8 signal. If a receiving station sees a solid, textured block instead of your picture, that's ALC-driven splatter — turn drive <i>down</i>, not up, and watch the G90's ALC indicator: it should barely move.</div>
         <div class="hint">Drive sets the level of audio sent to the radio's mic/data input. If CI-V PTT ever misbehaves, the G90's menu also supports VOX keying from the Line In audio as a fallback.</div>
         <div class="hint">The per-column power in the image encoder is normalized so a busy region and a sparse region hit the radio with roughly the same average level, but overall drive still needs to sit low enough that ALC action stays at or near zero.</div>
+        <label class="field">TX audio output latency padding <span class="range-val" id="txTailVal">700 ms</span></label>
+        <input type="range" id="txTailSlider" min="0" max="2000" step="50" value="700">
+        <div class="hint">The rendered image audio finishes flowing through the WebAudio graph slightly before it's actually finished playing out through the DE‑19 (the MediaStream→audio-element output path buffers a bit). This holds PTT open for the extra padding after the buffer ends, so the tail of the picture doesn't get clipped. Raise it if the last sliver of the image is still getting cut off; lower it if PTT is hanging open noticeably after audio stops.</div>
       </div>
     </div>
 
@@ -472,6 +484,8 @@
     renderedBuffer:null,
     frequencyHz:14074000,
     atuOn:false, atuTuning:false,
+    currentVfo:null,
+    txTailMs:700,
   };
 
   const $ = id => document.getElementById(id);
@@ -505,14 +519,89 @@
   // as FE FE <to> <from> <cmd> [data...] FD.
   // =====================================================================
   function civFreqBytes(hz){
-    // Icom CI-V frequency encoding: 5 bytes, LSB-first, BCD nibble-swapped per byte.
+    // Icom CI-V frequency encoding: 5 bytes, LSB byte first. Each byte packs
+    // two decimal digits as BCD with the MORE-significant digit of the pair
+    // in the HIGH nibble (e.g. 14074000 Hz -> 00 40 07 14 00). The previous
+    // version here packed the nibbles the other way round, which silently
+    // sent a garbled frequency to the rig — the G90 would then clamp
+    // whatever nonsense it decoded to its band edge (30 MHz), which is
+    // exactly the "Set Frequency always jumps to 30MHz" symptom.
     let f = Math.round(hz);
     const out = new Uint8Array(5);
     for(let i=0;i<5;i++){
-      out[i] = ((f % 10) << 4) | (Math.floor(f/10) % 10);
-      f = Math.floor(f/100);
+      const dLo = f % 10;
+      f = Math.floor(f/10);
+      const dHi = f % 10;
+      f = Math.floor(f/10);
+      out[i] = (dHi << 4) | dLo;
     }
     return out;
+  }
+
+  function civFreqFromBytes(bytes){
+    // Inverse of civFreqBytes — decodes a 5-byte LSB-first BCD frequency.
+    let hz = 0, mult = 1;
+    for(let i=0;i<5;i++){
+      const b = bytes[i];
+      const dHi = (b>>4)&0xF, dLo = b&0xF;
+      hz += (dHi*10 + dLo) * mult;
+      mult *= 100;
+    }
+    return hz;
+  }
+
+  function formatFreqDisplay(hz){
+    // G90-style grouping: MHz . kHz(3 digits) . tens-of-Hz(2 digits) — e.g.
+    // 14074000 Hz -> "14.074.00". The rig steps in 10 Hz increments so the
+    // final single Hz digit is always 0 and isn't shown.
+    hz = Math.round(hz);
+    const mhz = Math.floor(hz/1000000);
+    const khz = Math.floor((hz%1000000)/1000);
+    const tensOfHz = Math.floor((hz%1000)/10);
+    return String(mhz).padStart(2,'0') + '.' + String(khz).padStart(3,'0') + '.' + String(tensOfHz).padStart(2,'0');
+  }
+
+  // Place value (in Hz) of each digit position in the formatted string
+  // above, left to right: MHz-tens, MHz-ones, kHz-hundreds, kHz-tens,
+  // kHz-ones, (tens-of-Hz)-tens, (tens-of-Hz)-ones. Used to wrap each digit
+  // in its own span so scroll-to-tune knows exactly how much to add or
+  // subtract for whichever digit the mouse is hovering.
+  const FREQ_DIGIT_PLACES = [1e7,1e6,1e5,1e4,1e3,1e2,10];
+
+  function buildFreqDigitsHtml(hz){
+    const str = formatFreqDisplay(hz);
+    let digitIdx = 0, html = '';
+    for(const ch of str){
+      if(ch === '.'){
+        html += '<span class="freqSep">.</span>';
+      } else {
+        const place = FREQ_DIGIT_PLACES[digitIdx++];
+        html += `<span class="freqDigit" data-place="${place}">${ch}</span>`;
+      }
+    }
+    return html;
+  }
+
+  function parseCivFrames(buf){
+    // Splits a raw byte stream into individual FE FE ... FD CI-V frames.
+    // Needed because many CAT/USB interfaces echo back every byte you send
+    // before the rig's actual reply arrives, so a naive "find the first
+    // occurrence of my command byte" search matches the echo of your own
+    // outgoing frame instead of the real response.
+    const frames = [];
+    let i = 0;
+    while(i < buf.length-1){
+      if(buf[i]===0xFE && buf[i+1]===0xFE){
+        let j = i+2;
+        while(j<buf.length && buf[j]!==0xFD) j++;
+        if(j>=buf.length) break; // incomplete trailing frame
+        frames.push({ to:buf[i+2], from:buf[i+3], cmd:buf[i+4], data:buf.slice(i+5,j) });
+        i = j+1;
+      } else {
+        i++;
+      }
+    }
+    return frames;
   }
   function civFrame(cmd, data){
     const to = parseInt($('civTo').value, 16) || 0x70;
@@ -590,29 +679,26 @@
 
   async function readFrequency(){
     if(!S.catWriter){ alert('Connect CAT first.'); return; }
+    const myAddr = parseInt($('civFrom').value, 16) || 0xE0;
     await catSend(civFrame(0x03, []));
     const resp = await catReadResponse();
-    if(!resp || resp.length < 11){ $('vfoMode').textContent = 'MODE — (no reply)'; return; }
-    // Expect: FE FE <to> <from> 03 <5 freq bytes LSB-first BCD> FD
-    const fdIdx = resp.indexOf(0xFD);
-    const cmdIdx = resp.indexOf(0x03, 4);
-    if(fdIdx < 0 || cmdIdx < 0 || fdIdx - cmdIdx < 6){ $('vfoMode').textContent='MODE — (bad frame)'; return; }
-    const fbytes = resp.slice(cmdIdx+1, cmdIdx+6);
-    let hz = 0, mult = 1;
-    for(let i=0;i<5;i++){
-      const b = fbytes[i];
-      const lo = (b>>4)&0xF, hi = b&0xF;
-      hz += lo*mult*10 + hi*mult;
-      mult *= 100;
-    }
+    if(!resp || !resp.length){ $('vfoMode').textContent = 'MODE — (no reply — check CI-V address/baud)'; return; }
+    // Many interfaces echo the bytes we just sent before the rig's actual
+    // reply shows up, and the echo also contains our own command byte — so
+    // parse out every complete frame and pick the one genuinely addressed
+    // TO us (to === our controller address) with 5+ data bytes, rather than
+    // just searching raw bytes for the first 0x03.
+    const frames = parseCivFrames(resp);
+    const replyFrame = [...frames].reverse().find(f => f.to === myAddr && f.cmd === 0x03 && f.data.length >= 5);
+    if(!replyFrame){ $('vfoMode').textContent = 'MODE — (no reply frame — check CI-V address)'; return; }
+    const hz = civFreqFromBytes(replyFrame.data);
     if(hz > 0){ S.frequencyHz = hz; updateVfoDisplay(); }
     $('vfoMode').textContent = 'CI-V OK';
   }
 
   function updateVfoDisplay(){
-    const mhz = (S.frequencyHz/1e6).toFixed(6);
-    $('vfoHz').textContent = mhz;
-    $('freqSet').value = mhz;
+    $('vfoHz').innerHTML = buildFreqDigitsHtml(S.frequencyHz);
+    $('freqSet').value = (S.frequencyHz/1e6).toFixed(6);
   }
 
   async function catPTT(on){
@@ -629,6 +715,35 @@
     await S.port.setSignals(signals);
   }
 
+  // =====================================================================
+  // SCROLL-TO-TUNE — hover a digit in the VFO display and scroll the
+  // wheel to bump the frequency up/down at that digit's place value
+  // (e.g. hovering the kHz-tens digit and scrolling up steps by 10 kHz).
+  // Mirrors how real rigs let you spin a knob over a specific digit.
+  // =====================================================================
+  let freqScrollPending = null;
+  function applyFreqScrollDelta(delta){
+    let newHz = Math.round((S.frequencyHz + delta)/10)*10; // rig steps in 10 Hz increments
+    newHz = Math.max(0, Math.min(99999990, newHz));
+    if(newHz === S.frequencyHz) return;
+    S.frequencyHz = newHz;
+    updateVfoDisplay();
+    // Debounce the actual CAT write slightly so a fast multi-notch scroll
+    // doesn't queue up a burst of serial writes — only the final value
+    // after scrolling settles gets sent to the rig.
+    clearTimeout(freqScrollPending);
+    freqScrollPending = setTimeout(()=>{
+      if(S.catWriter) setFrequency(S.frequencyHz);
+    }, 150);
+  }
+  $('vfoHz').addEventListener('wheel', e=>{
+    const digitEl = e.target.closest('.freqDigit');
+    if(!digitEl) return;
+    e.preventDefault();
+    const place = parseInt(digitEl.dataset.place, 10) || 10;
+    applyFreqScrollDelta(e.deltaY < 0 ? place : -place);
+  }, {passive:false});
+
   $('btnCat').addEventListener('click', connectCAT);
   $('btnSetFreq').addEventListener('click', ()=>{
     const mhz = parseFloat($('freqSet').value);
@@ -636,6 +751,27 @@
     setFrequency(Math.round(mhz*1e6));
   });
   $('btnReadFreq').addEventListener('click', readFrequency);
+
+  // =====================================================================
+  // VFO A/B select — Icom CI-V command 0x07: data 0x00 selects VFO A,
+  // 0x01 selects VFO B. There's no separate "read which VFO is active"
+  // query used here, so the UI's A/B highlight reflects the last VFO this
+  // app itself selected, not necessarily what's shown on the rig if it was
+  // changed from the front panel in between.
+  // =====================================================================
+  async function selectVfo(which){
+    if(!S.catWriter){ alert('Connect CAT first.'); return; }
+    await catSend(civFrame(0x07, [which === 'A' ? 0x00 : 0x01]));
+    S.currentVfo = which;
+    updateVfoButtons();
+  }
+  function updateVfoButtons(){
+    $('btnVfoA').classList.toggle('connected', S.currentVfo === 'A');
+    $('btnVfoB').classList.toggle('connected', S.currentVfo === 'B');
+  }
+  $('btnVfoA').addEventListener('click', ()=> selectVfo('A'));
+  $('btnVfoB').addEventListener('click', ()=> selectVfo('B'));
+  $('btnVfoSwitch').addEventListener('click', ()=> selectVfo(S.currentVfo === 'A' ? 'B' : 'A'));
 
   // =====================================================================
   // ANTENNA TUNER (real G90 built-in ATU) — Icom CI-V command 0x1C 0x01,
@@ -663,14 +799,15 @@
     // Reading 0x1C 0x00 with no data returns the rig's current TX on/off
     // flag — used here purely to detect when a tune cycle has finished and
     // the rig has dropped back to RX on its own, since the ATU keys itself
-    // without this app driving PTT.
+    // without this app driving PTT. Same echo caveat as readFrequency: pick
+    // the frame actually addressed to us, not an echo of our own request.
+    const myAddr = parseInt($('civFrom').value, 16) || 0xE0;
     await catSend(civFrame([0x1C,0x00], []));
     const resp = await catReadResponse(500);
     if(!resp) return null;
-    for(let i=0;i<resp.length-2;i++){
-      if(resp[i]===0x1C && resp[i+1]===0x00){ return resp[i+2]; }
-    }
-    return null;
+    const frames = parseCivFrames(resp);
+    const replyFrame = [...frames].reverse().find(f => f.to === myAddr && f.cmd === 0x1C && f.data.length >= 2 && f.data[0]===0x00);
+    return replyFrame ? replyFrame.data[1] : null;
   }
 
   async function startAtuTune(){
@@ -1320,16 +1457,24 @@
   $('btnTxImage').addEventListener('click', async ()=>{
     if(!S.renderedBuffer) return;
     // Give the safety timer enough headroom to cover the whole rendered
-    // buffer (plus a margin for scheduling/output latency) so long images
-    // at slow transmit speeds don't get their PTT yanked mid-picture.
-    await enablePTT(S.renderedBuffer.duration*1000 + 3000);
+    // buffer PLUS the output-path tail latency (see txTailMs) so long
+    // images at slow transmit speeds don't get their PTT yanked mid-picture.
+    await enablePTT(S.renderedBuffer.duration*1000 + S.txTailMs + 3000);
     startTxPreview(S.lastMatrix, S.lastMatrixRows, S.lastMatrixCols, S.renderedBuffer.duration*1000);
     try{
       const src = playBuffer(S.renderedBuffer, true);
-      src.onended = ()=> { disablePTT(); stopTxPreview(); };
+      // AudioBufferSourceNode.onended fires the instant the buffer finishes
+      // inside the WebAudio graph — but the actual sound still has to work
+      // its way through the MediaStreamAudioDestinationNode -> MediaStream
+      // -> <audio> element -> DE-19 output path, which lags behind the
+      // graph's own clock. Dropping PTT right on onended was clipping the
+      // last stretch of every image. Hold PTT open for the extra padding
+      // (Settings/PTT panel: "TX audio output latency padding") before
+      // actually releasing it.
+      src.onended = ()=> { setTimeout(()=>{ disablePTT(); stopTxPreview(); }, S.txTailMs); };
       // Belt-and-braces: also release a moment after the buffer's expected
-      // duration, in case onended never fires (e.g. context stayed suspended).
-      const expectedMs = (S.renderedBuffer.duration*1000) + 1500;
+      // duration + tail, in case onended never fires (e.g. context stayed suspended).
+      const expectedMs = (S.renderedBuffer.duration*1000) + S.txTailMs + 1500;
       setTimeout(()=>{
         if($('vfoRxTx').textContent==='TX') disablePTT();
         stopTxPreview();
@@ -1487,6 +1632,7 @@
   $('cm108Bit').addEventListener('change', e=>{ S.cm108Bit = parseInt(e.target.value,10); });
 
   bindRange('driveSlider', v=>{ S.drive = v/100; $('driveVal').textContent = v+'%'; });
+  bindRange('txTailSlider', v=>{ S.txTailMs = Math.round(v); $('txTailVal').textContent = Math.round(v)+' ms'; });
 
   ['imgCols','imgFrame'].forEach(id=> $(id).addEventListener('input', updateDurationEstimate));
   const speedNamesTx = v => v<=0.05?'Fast':v<=0.09?'Normal':v<=0.15?'Relaxed':'Slow';
