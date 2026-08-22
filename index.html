@@ -262,14 +262,23 @@
     background:var(--panel-2);border:1px solid var(--phosphor-dim);border-radius:5px;
     cursor:grab;touch-action:none;pointer-events:auto;padding:0;
   }
+  .move-side-btn{
+    display:none;position:absolute;top:8px;right:40px;z-index:5;
+    width:26px;height:26px;align-items:center;justify-content:center;
+    font-size:14px;line-height:1;color:var(--amber);
+    background:var(--panel-2);border:1px solid var(--amber-dim);border-radius:5px;
+    cursor:pointer;touch-action:none;pointer-events:auto;padding:0;
+  }
+  .move-side-btn:hover{border-color:var(--amber);box-shadow:0 0 8px rgba(255,180,84,.25);}
   body.reorder-mode .drag-handle{display:flex;}
+  body.reorder-mode .move-side-btn{display:flex;}
   body.reorder-mode .sortable-item{
     touch-action:none;cursor:grab;
-    animation:panelWiggle .26s ease-in-out infinite;
+    animation:panelWiggle .5s ease-in-out infinite;
   }
-  body.reorder-mode .sortable-item:nth-child(2n){animation-delay:-.13s;}
-  body.reorder-mode .sortable-item:nth-child(3n){animation-delay:-.19s;}
-  body.reorder-mode .sortable-item > *:not(.drag-handle){pointer-events:none;user-select:none;}
+  body.reorder-mode .sortable-item:nth-child(2n){animation-delay:-.17s;}
+  body.reorder-mode .sortable-item:nth-child(3n){animation-delay:-.25s;}
+  body.reorder-mode .sortable-item > *:not(.drag-handle):not(.move-side-btn){pointer-events:none;user-select:none;}
   body.reorder-mode .sortable-item.dragging{animation:none;}
   .sortable-item.dragging{
     position:fixed;z-index:1000;cursor:grabbing;margin:0;
@@ -283,9 +292,9 @@
   .right-col > .sortable-placeholder:first-child{margin-top:0;}
 
   @keyframes panelWiggle{
-    0%{transform:rotate(-0.6deg);}
-    50%{transform:rotate(0.6deg);}
-    100%{transform:rotate(-0.6deg);}
+    0%{transform:rotate(-0.25deg);}
+    50%{transform:rotate(0.25deg);}
+    100%{transform:rotate(-0.25deg);}
   }
 
   footer{
@@ -437,6 +446,7 @@
         <div class="subtab-row">
           <button class="subtab-btn active" data-subtab="txSubImage">Image / Text</button>
           <button class="subtab-btn" data-subtab="txSubVoice">Voice (mic)</button>
+          <button class="subtab-btn" data-subtab="txSubAudioFile">Audio file</button>
         </div>
 
         <div class="subtab-view active" id="txSubImage">
@@ -472,7 +482,8 @@
           <div class="meter-label"><span>Mic input level</span><span id="voiceMeterPct">0%</span></div>
 
           <label class="field">Mic TX gain <span class="range-val" id="voiceDriveVal">50%</span></label>
-          <input type="range" id="voiceDriveSlider" min="0" max="100" value="50">
+          <input type="range" id="voiceDriveSlider" min="0" max="200" step="1" value="50">
+          <div class="hint warn">Above 100% boosts a quiet mic but can clip — watch the TX meter (left panel) and back off if it pins.</div>
 
           <button class="btn btn-primary" id="btnVoicePtt" style="margin-top:14px;">🎙 Voice PTT — hold to transmit</button>
           <div class="hint warn">Keys the rig exactly like the main PTT button in the left panel — release to unkey. Shares the same DE‑19 audio-out path as image TX, so connect DE‑19 audio (left panel) first.</div>
@@ -484,6 +495,25 @@
             <button class="btn" id="btnModeLSB">Set mode → LSB</button>
           </div>
           <div class="hint">Uses the same Icom CI‑V command family as the rest of this app's CAT control — verify the mode actually switches on the rig's own display before transmitting.</div>
+        </div>
+
+        <div class="subtab-view" id="txSubAudioFile">
+          <div class="drop-zone" id="audioDropZone">
+            Click or drop an audio file — .wav, .mp3, .flac, .ogg, .m4a and similar are all fine.
+            <input type="file" id="audioFileInput" accept="audio/*,.wav,.mp3,.flac,.ogg,.m4a,.aac">
+          </div>
+          <div class="preview-info" id="audioFileInfo" style="margin-top:10px;">No audio file loaded.</div>
+
+          <label class="field">TX gain <span class="range-val" id="audioFileDriveVal">70%</span></label>
+          <input type="range" id="audioFileDriveSlider" min="0" max="200" step="1" value="70">
+          <div class="hint warn">Above 100% boosts a quiet file but can clip — watch the TX meter (left panel) and back off if it pins at the top.</div>
+
+          <div class="scope-foot">
+            <button class="btn btn-primary" id="btnPreviewAudioFile" disabled>▶ Preview (speaker)</button>
+            <button class="btn btn-tune" id="btnTxAudioFile" disabled>Transmit over air</button>
+            <button class="btn" id="btnStopAudioFile" disabled>■ Stop</button>
+          </div>
+          <div class="hint">Sends the file's audio straight to the DE‑19 mic/data input — handy for pre-recorded voice messages, SSTV/data clips, or test tones. Connect DE‑19 audio (left panel) first. Rig should be in the matching mode for whatever the file contains.</div>
         </div>
       </div>
     </div>
@@ -682,6 +712,7 @@
     txTailMs:700,
     voiceMicStream:null, voiceMicSource:null, voiceGain:null, voiceAnalyser:null,
     voiceTxActive:false, voiceDrive:0.5,
+    audioFileBuffer:null, audioFileDrive:0.7, audioFileActiveSource:null, audioFileTxActive:false,
   };
 
   const $ = id => document.getElementById(id);
@@ -1647,11 +1678,11 @@
     $('imgInfo').textContent = `Rendered: ${cols}×${rows}, ${(totalSamples/sr).toFixed(1)}s @ ${sr}Hz`;
   }
 
-  function playBuffer(buffer, toRadio){
+  function playBuffer(buffer, toRadio, gainOverride){
     const src = S.audioCtx.createBufferSource();
     src.buffer = buffer;
     const gain = S.audioCtx.createGain();
-    gain.gain.value = toRadio ? S.drive : 0.7;
+    gain.gain.value = (gainOverride != null) ? gainOverride : (toRadio ? S.drive : 0.7);
     src.connect(gain);
     if(toRadio && S.outDest){
       gain.connect(S.outDest);
@@ -1683,6 +1714,101 @@
       stopTxPreview();
     }
   });
+
+  // =====================================================================
+  // AUDIO FILE PLAYER — decode a user-supplied .wav/.mp3/.flac/.ogg/.m4a
+  // etc via Web Audio's decodeAudioData, then either preview it locally
+  // or transmit it straight to the DE‑19 mic/data input like any other
+  // TX source (keying PTT for the duration + tail padding).
+  // =====================================================================
+  function formatDuration(sec){
+    const m = Math.floor(sec/60), s = Math.round(sec%60).toString().padStart(2,'0');
+    return `${m}:${s}`;
+  }
+
+  function loadAudioFile(file){
+    if(!file) return;
+    if(!S.audioCtx) S.audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+    $('audioFileInfo').textContent = `Decoding ${file.name}…`;
+    $('btnPreviewAudioFile').disabled = true;
+    $('btnTxAudioFile').disabled = true;
+    const reader = new FileReader();
+    reader.onload = e=>{
+      S.audioCtx.decodeAudioData(e.target.result.slice(0)).then(decoded=>{
+        S.audioFileBuffer = decoded;
+        $('audioFileInfo').textContent = `${file.name} — ${formatDuration(decoded.duration)}, ${decoded.numberOfChannels}ch @ ${decoded.sampleRate}Hz`;
+        $('btnPreviewAudioFile').disabled = false;
+        $('btnTxAudioFile').disabled = false;
+      }).catch(err=>{
+        console.error('Audio decode failed', err);
+        S.audioFileBuffer = null;
+        $('audioFileInfo').textContent = `Could not decode "${file.name}" — try a standard WAV, MP3 or FLAC export.`;
+      });
+    };
+    reader.onerror = ()=>{ $('audioFileInfo').textContent = 'Could not read that file.'; };
+    reader.readAsArrayBuffer(file);
+  }
+
+  $('audioDropZone').addEventListener('click', ()=>$('audioFileInput').click());
+  $('audioFileInput').addEventListener('change', e=>loadAudioFile(e.target.files[0]));
+  ['dragover','dragleave','drop'].forEach(evt=>{
+    $('audioDropZone').addEventListener(evt, e=>{
+      e.preventDefault();
+      $('audioDropZone').classList.toggle('drag', evt==='dragover');
+      if(evt==='drop') loadAudioFile(e.dataTransfer.files[0]);
+    });
+  });
+
+  bindRange('audioFileDriveSlider', v=>{
+    S.audioFileDrive = v/100;
+    $('audioFileDriveVal').textContent = Math.round(v)+'%';
+  });
+
+  function stopAudioFilePlayback(){
+    if(S.audioFileActiveSource){
+      try{ S.audioFileActiveSource.onended = null; S.audioFileActiveSource.stop(); }catch(e){}
+      S.audioFileActiveSource = null;
+    }
+    $('btnStopAudioFile').disabled = true;
+    if(S.audioFileTxActive) finishAudioFileTx();
+  }
+
+  function finishAudioFileTx(){
+    if(!S.audioFileTxActive) return;
+    S.audioFileTxActive = false;
+    $('scopeTxBadge').style.display = 'none';
+    $('btnStopAudioFile').disabled = true;
+    S.audioFileActiveSource = null;
+    disablePTT();
+  }
+
+  $('btnPreviewAudioFile').addEventListener('click', ()=>{
+    if(!S.audioFileBuffer) return;
+    stopAudioFilePlayback();
+    S.audioFileActiveSource = playBuffer(S.audioFileBuffer, false, 0.8);
+    $('btnStopAudioFile').disabled = false;
+    S.audioFileActiveSource.onended = ()=>{ $('btnStopAudioFile').disabled = true; S.audioFileActiveSource=null; };
+  });
+
+  $('btnTxAudioFile').addEventListener('click', async ()=>{
+    if(!S.audioFileBuffer) return;
+    stopAudioFilePlayback();
+    S.audioFileTxActive = true;
+    $('scopeTxBadge').style.display = 'inline';
+    await enablePTT(S.audioFileBuffer.duration*1000 + S.txTailMs + 3000);
+    try{
+      S.audioFileActiveSource = playBuffer(S.audioFileBuffer, true, S.audioFileDrive);
+      $('btnStopAudioFile').disabled = false;
+      S.audioFileActiveSource.onended = ()=>{ setTimeout(finishAudioFileTx, S.txTailMs); };
+      const expectedMs = (S.audioFileBuffer.duration*1000) + S.txTailMs + 1500;
+      setTimeout(()=>{ if(S.audioFileTxActive) finishAudioFileTx(); }, expectedMs);
+    }catch(err){
+      console.error('Audio file transmit failed to start', err);
+      finishAudioFileTx();
+    }
+  });
+
+  $('btnStopAudioFile').addEventListener('click', stopAudioFilePlayback);
 
   let pttSafetyTimer = null;
   const PTT_SAFETY_MS = 120000;
@@ -1736,12 +1862,13 @@
 
   window.addEventListener('mouseup', ()=>{ disablePTT(); stopVoiceTx(); });
   window.addEventListener('touchend', ()=>{ disablePTT(); stopVoiceTx(); });
-  window.addEventListener('blur', ()=>{ disablePTT(); stopVoiceTx(); });
-  document.addEventListener('visibilitychange', ()=>{ if(document.hidden){ disablePTT(); stopVoiceTx(); } });
+  window.addEventListener('blur', ()=>{ disablePTT(); stopVoiceTx(); stopAudioFilePlayback(); });
+  document.addEventListener('visibilitychange', ()=>{ if(document.hidden){ disablePTT(); stopVoiceTx(); stopAudioFilePlayback(); } });
 
   $('btnPanicRelease').addEventListener('click', async ()=>{
     stopTune();
     stopTxPreview();
+    stopAudioFilePlayback();
     await stopVoiceTx();
     await disablePTT();
     try{ if(S.port) await S.port.setSignals({dataTerminalReady:false, requestToSend:false}); }catch(e){}
@@ -1997,6 +2124,8 @@
       civTo: $('civTo').value,
       civFrom: $('civFrom').value,
       monitorVolume: S.monitorVolume,
+      voiceDrive: S.voiceDrive,
+      audioFileDrive: S.audioFileDrive,
       img: {
         cols: $('imgCols').value, rows: $('imgRows').value, frame: $('imgFrame').value,
         gamma: $('imgGamma').value,
@@ -2044,6 +2173,8 @@
     if(saved.civTo) $('civTo').value = saved.civTo;
     if(saved.civFrom) $('civFrom').value = saved.civFrom;
     if(typeof saved.monitorVolume === 'number') setRangeAndLabel('monitorVolume', Math.round(saved.monitorVolume*100));
+    if(typeof saved.voiceDrive === 'number') setRangeAndLabel('voiceDriveSlider', Math.round(saved.voiceDrive*100));
+    if(typeof saved.audioFileDrive === 'number') setRangeAndLabel('audioFileDriveSlider', Math.round(saved.audioFileDrive*100));
     if(saved.img){
       if(saved.img.rows) $('imgRows').value = saved.img.rows;
       if(saved.img.cols) $('imgCols').value = saved.img.cols;
@@ -2058,6 +2189,7 @@
 
   ['wfGain','wfMin','wfMax','wfSpeed','wfFft','wfPalette','driveSlider','txTailSlider',
    'pttMethod','cm108Bit','catBaud','catFraming','civTo','civFrom','monitorVolume',
+   'voiceDriveSlider','audioFileDriveSlider',
    'imgCols','imgRows','imgFrame','imgGamma','tuneFreq','tuneTimeout'].forEach(id=>{
     const el = $(id);
     if(el) el.addEventListener('change', saveSettings);
@@ -2065,21 +2197,85 @@
 
   // =====================================================================
   // PANEL REORDERING — iOS-homescreen-style drag to reorder the stacked
-  // panels within the left rack and the right column, independently of
-  // each other (each is its own vertical list). Tap "Rearrange" to enter
-  // reorder mode (panels wiggle, a grip handle appears on each), then drag
-  // any panel — by its handle or anywhere on its body — to a new spot in
-  // its own column. Order is remembered per-browser via localStorage.
+  // panels within the left rack and the right column. Tap "Rearrange" to
+  // enter reorder mode (panels wiggle, a grip handle + a move-to-other-
+  // column button appear on each), then drag any panel by its handle to a
+  // new spot in its own column, or tap the arrow to hop it to the other
+  // column. Layout is remembered per-browser via localStorage.
   // =====================================================================
-  const REORDER_STORAGE_PREFIX = 'waterfall90-order-';
+  const LAYOUT_STORAGE_KEY = 'waterfall90-layout-v1';
 
-  function makeSortableGroup(containerEl, groupKey){
+  function getColumnEls(){
+    return { rack: document.querySelector('.rack'), right: document.querySelector('.right-col') };
+  }
+
+  function saveLayout(){
+    const { rack, right } = getColumnEls();
+    const idsOf = el => Array.from(el.children)
+      .filter(c=>c.classList.contains('sortable-item'))
+      .map(c=>c.dataset.panelId);
+    const layout = { rack: idsOf(rack), right: idsOf(right) };
+    try{ localStorage.setItem(LAYOUT_STORAGE_KEY, JSON.stringify(layout)); }
+    catch(err){ console.warn('Could not save panel layout', err); }
+  }
+
+  function loadLayout(){
+    let layout = null;
+    try{ layout = JSON.parse(localStorage.getItem(LAYOUT_STORAGE_KEY) || 'null'); }
+    catch(err){ layout = null; }
+    if(!layout) return;
+    const { rack, right } = getColumnEls();
+    (layout.rack||[]).forEach(id=>{
+      const el = document.querySelector(`.sortable-item[data-panel-id="${id}"]`);
+      if(el) rack.appendChild(el);
+    });
+    (layout.right||[]).forEach(id=>{
+      const el = document.querySelector(`.sortable-item[data-panel-id="${id}"]`);
+      if(el) right.appendChild(el);
+    });
+  }
+
+  function updateMoveBtnIcon(item){
+    const btn = item.querySelector(':scope > .move-side-btn');
+    if(!btn) return;
+    const inRack = item.parentElement === document.querySelector('.rack');
+    btn.textContent = inRack ? '→' : '←';
+    btn.title = inRack ? 'Move to right column' : 'Move to left column';
+  }
+
+  function refreshAllMoveBtnIcons(){
+    document.querySelectorAll('.sortable-item').forEach(updateMoveBtnIcon);
+  }
+
+  function moveItemToOtherColumn(item){
+    const { rack, right } = getColumnEls();
+    const inRack = item.parentElement === rack;
+    const target = inRack ? right : rack;
+    target.appendChild(item);
+    updateMoveBtnIcon(item);
+    saveLayout();
+  }
+
+  function addMoveButtons(){
+    document.querySelectorAll('.sortable-item').forEach(item=>{
+      if(item.querySelector(':scope > .move-side-btn')) return; // already added
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'move-side-btn';
+      btn.tabIndex = -1;
+      btn.addEventListener('pointerdown', e=>{ e.stopPropagation(); });
+      btn.addEventListener('click', e=>{
+        e.stopPropagation();
+        moveItemToOtherColumn(item);
+      });
+      item.appendChild(btn);
+      updateMoveBtnIcon(item);
+    });
+  }
+
+  function makeSortableGroup(containerEl){
     if(!containerEl) return;
     let dragEl = null, placeholder = null, pointerId = null, offsetY = 0;
-
-    function itemsIn(){
-      return Array.from(containerEl.children).filter(el=>el.classList.contains('sortable-item'));
-    }
 
     function onPointerDown(e){
       if(!document.body.classList.contains('reorder-mode')) return;
@@ -2136,7 +2332,7 @@
       placeholder.remove();
       dragEl = null;
       placeholder = null;
-      saveOrder();
+      saveLayout();
     }
 
     function onPointerUp(e){
@@ -2144,36 +2340,21 @@
       endDrag();
     }
 
-    function saveOrder(){
-      const ids = itemsIn().map(el=>el.dataset.panelId);
-      try{ localStorage.setItem(REORDER_STORAGE_PREFIX+groupKey, JSON.stringify(ids)); }
-      catch(err){ console.warn('Could not save panel order', err); }
-    }
-
-    function loadOrder(){
-      let ids = null;
-      try{ ids = JSON.parse(localStorage.getItem(REORDER_STORAGE_PREFIX+groupKey) || 'null'); }
-      catch(err){ ids = null; }
-      if(!Array.isArray(ids)) return;
-      ids.forEach(id=>{
-        const el = containerEl.querySelector(`:scope > .sortable-item[data-panel-id="${id}"]`);
-        if(el) containerEl.appendChild(el);
-      });
-    }
-
-    itemsIn().forEach(item=>{
+    Array.from(containerEl.children).filter(el=>el.classList.contains('sortable-item')).forEach(item=>{
       item.addEventListener('pointerdown', onPointerDown);
     });
     window.addEventListener('pointermove', onPointerMove);
     window.addEventListener('pointerup', onPointerUp);
     window.addEventListener('pointercancel', onPointerUp);
-
-    loadOrder();
   }
 
   function initReorderFeature(){
-    makeSortableGroup(document.querySelector('.rack'), 'rack');
-    makeSortableGroup(document.querySelector('.right-col'), 'right');
+    loadLayout();
+    addMoveButtons();
+    refreshAllMoveBtnIcons();
+    const { rack, right } = getColumnEls();
+    makeSortableGroup(rack);
+    makeSortableGroup(right);
 
     $('btnRearrange').addEventListener('click', ()=>{
       const on = document.body.classList.toggle('reorder-mode');
