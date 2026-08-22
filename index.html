@@ -501,11 +501,15 @@
 
           <div class="divider"></div>
 
-          <label class="field" style="display:flex;align-items:center;justify-content:space-between;">
+          <label class="field">Local playback output <span style="opacity:.6">(this device / speakers)</span></label>
+          <select id="nsOutputSelect"><option value="">System default</option></select>
+          <div class="hint" id="nsOutputHint">Where audio plays while you're just listening (not sending to the radio). Browser voices can't be redirected to a specific device by any web API — they'll always use your OS default output regardless of this setting.</div>
+
+          <label class="field" style="display:flex;align-items:center;justify-content:space-between;margin-top:12px;">
             <span>Key radio PTT &amp; transmit to G90 (custom clips only)</span>
             <input type="checkbox" id="nsTxToRadio" style="width:auto;accent-color:var(--red);">
           </label>
-          <div class="hint warn" id="nsRadioModeHint">Browser voices can't be captured by this page's audio engine, so only <b>custom audio clips</b> can go out over the air — otherwise this stays local monitor-only. Shares the same DE‑19 audio-out and PTT method as the rest of this app, so connect DE‑19 audio (left panel) first.</div>
+          <div class="hint warn" id="nsRadioModeHint">Browser voices can't be captured by this page's audio engine, so only <b>custom audio clips</b> can go out over the air — otherwise this stays local monitor-only, out of the device chosen above. Shares the same DE‑19 audio-out and PTT method as the rest of this app, so connect DE‑19 audio (left panel) first.</div>
           <label class="field">Playback gain to radio <span class="range-val" id="nsDriveVal">20%</span></label>
           <input type="range" id="nsDriveSlider" min="0" max="200" value="20">
 
@@ -567,6 +571,10 @@
           <label class="field">Loops <span class="range-val" id="afLoopVal">play once</span></label>
           <input class="textfield" type="number" id="afLoopCount" value="0" step="1">
           <div class="hint"><b>0</b> = play once (no repeat) · <b>N</b> = repeat N extra times after the first play · <b>-1</b> = loop forever (until Stop)</div>
+
+          <label class="field">Local playback output <span style="opacity:.6">(Preview only)</span></label>
+          <select id="afOutputSelect"><option value="">System default</option></select>
+          <div class="hint">Where Preview plays while you're just listening. Transmit over air always uses the <b>TX output</b> device set in Settings → Audio, regardless of this.</div>
 
           <div class="scope-foot" style="margin-top:10px;">
             <button class="btn btn-primary" id="afPreviewBtn" disabled>▶ Preview (speaker)</button>
@@ -674,8 +682,10 @@
       <select id="audioOutSelect"><option value="">Connect audio first…</option></select>
       <label class="field">Monitor speaker (listen to receive audio)</label>
       <select id="audioMonitorSelect"><option value="">Connect audio first…</option></select>
+      <label class="field">Preview / local playback output</label>
+      <select id="audioPreviewSelect"><option value="">Connect audio first…</option></select>
       <button class="btn" id="btnRefreshDevices" style="margin-top:10px;">↻ Refresh device list</button>
-      <div class="hint">Requires a Chromium browser. <b>TX output</b> = DE‑19 (carries audio to the radio). <b>Monitor</b> = your speakers/headphones. The headset microphone for <b>Voice TX</b> is picked on the Radio tab's Voice sub-panel.</div>
+      <div class="hint">Requires a Chromium browser. <b>TX output</b> = DE‑19 (carries audio to the radio). <b>Monitor</b> = your speakers/headphones for RX audio. <b>Preview / local playback</b> = your speakers/headphones for the Image and Audio File "Preview" buttons and for the Numbers Station reader when it isn't keying the radio. The headset microphone for <b>Voice TX</b> is picked on the Radio tab's Voice sub-panel.</div>
     </div>
 
     <div class="panel">
@@ -764,6 +774,7 @@
     audioCtx:null, analyser:null, micSource:null, micStream:null,
     outEl:null, outDest:null, // for routed output via setSinkId
     monitorGain:null, monitorDest:null, monitorEl:null, monitorOn:false, monitorVolume:0.6, // RX audio listen-through
+    previewDest:null, previewEl:null, // shared local-playback routing for Preview buttons & Numbers Station monitor
     waterfall:{ gain:1.0, min:300, max:2700, speed:3, fft:2048, palette:'phosphor', running:false },
     drive:0.2,
     pttMethod:'cat',
@@ -1313,6 +1324,7 @@
       setDot('dotAudioOut','warn');
       applyOutputSink();
       applyMonitorSink();
+      applyPreviewSink();
     }catch(err){
       console.error(err);
       alert('Audio connection failed: '+err.message);
@@ -1325,18 +1337,26 @@
       const ins = devices.filter(d=>d.kind==='audioinput');
       const outs = devices.filter(d=>d.kind==='audiooutput');
       const inSel = $('audioInSelect'), outSel = $('audioOutSelect'), monSel = $('audioMonitorSelect');
+      const previewSel = $('audioPreviewSelect'), nsSel = $('nsOutputSelect'), afSel = $('afOutputSelect');
       inSel.innerHTML = ins.map(d=>`<option value="${d.deviceId}">${d.label||'Input device'}</option>`).join('') || '<option value="">No inputs found</option>';
       const outOptionsHtml = outs.map(d=>`<option value="${d.deviceId}">${d.label||'Output device'}</option>`).join('') || '<option value="">No outputs found</option>';
       outSel.innerHTML = outOptionsHtml;
       monSel.innerHTML = outOptionsHtml;
+      // Preview / local-playback output — offered wherever a "just listen to
+      // this, don't key the radio" control exists (Settings, and shortcuts
+      // right on the Numbers Station and Audio File panels themselves, kept
+      // in sync with the same device list and selection).
+      const previewOptionsHtml = '<option value="">System default</option>' + outOptionsHtml;
+      [previewSel, nsSel, afSel].forEach(sel=>{ if(sel) sel.innerHTML = previewOptionsHtml; });
       // guess DE-19 by label for the TX output — this is the interface that
       // should carry rendered image/tune audio to the radio's mic input.
       [...inSel.options].forEach(o=>{ if(/de-?19/i.test(o.textContent)) inSel.value=o.value; });
       [...outSel.options].forEach(o=>{ if(/de-?19/i.test(o.textContent)) outSel.value=o.value; });
-      // The monitor speaker is deliberately NOT auto-guessed to the DE-19 —
-      // it should default to whatever the browser lists first (normally the
-      // system default speakers/headphones), since the whole point is
-      // listening on a device other than the one wired to the radio.
+      // The monitor speaker and preview output are deliberately NOT
+      // auto-guessed to the DE-19 — they should default to whatever the
+      // browser lists first (normally the system default speakers/
+      // headphones), since the whole point is listening on a device other
+      // than the one wired to the radio.
     }catch(err){ console.warn(err); }
   }
 
@@ -1363,6 +1383,54 @@
       console.warn('Monitor setSinkId failed', err);
     }
   }
+
+  // =====================================================================
+  // PREVIEW / LOCAL-PLAYBACK OUTPUT ROUTING — a shared MediaStreamDestination
+  // + <audio> element (same setSinkId pattern as outEl/monitorEl above) that
+  // "just listening" controls render into, so their sound can be sent to a
+  // chosen physical device instead of whatever the browser defaults to:
+  // the Image and Audio File "Preview" buttons, and the Numbers Station
+  // reader whenever it isn't keying the radio. Three selects stay in sync
+  // (Settings, and the shortcuts on the Numbers Station / Audio File
+  // panels) — picking any one of them updates all three and applies
+  // immediately.
+  // =====================================================================
+  function ensurePreviewRouting(){
+    if(!S.audioCtx) S.audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+    if(!S.previewDest){
+      S.previewDest = S.audioCtx.createMediaStreamDestination();
+      S.previewEl = document.createElement('audio');
+      S.previewEl.autoplay = true;
+      document.body.appendChild(S.previewEl);
+      S.previewEl.srcObject = S.previewDest.stream;
+      applyPreviewSink();
+    }
+    return S.previewDest;
+  }
+
+  async function applyPreviewSink(){
+    if(!S.previewEl || !S.previewEl.setSinkId) return;
+    const id = $('audioPreviewSelect').value;
+    if(!id) return; // empty = system default, which is setSinkId('')'s job, but leaving the element alone already means default
+    try{ await S.previewEl.setSinkId(id); }
+    catch(err){ console.warn('Preview setSinkId failed', err); }
+  }
+
+  function syncPreviewSelects(sourceId, value){
+    ['audioPreviewSelect','nsOutputSelect','afOutputSelect'].forEach(id=>{
+      if(id === sourceId) return;
+      const el = $(id);
+      if(el && [...el.options].some(o=>o.value===value)) el.value = value;
+    });
+  }
+  ['audioPreviewSelect','nsOutputSelect','afOutputSelect'].forEach(id=>{
+    const el = $(id);
+    if(!el) return;
+    el.addEventListener('change', ()=>{
+      syncPreviewSelects(id, el.value);
+      applyPreviewSink();
+    });
+  });
 
   $('btnAudio').addEventListener('click', connectAudio);
   $('btnRefreshDevices').addEventListener('click', ()=>{ refreshDeviceList(); refreshVoiceMicList(); });
@@ -1484,12 +1552,17 @@
   // =====================================================================
   // NUMBERS STATION READER — reads back pasted digit groups either as
   // browser speech-synthesis voices (local monitor only — TTS audio isn't
-  // exposed to any web API, so it can't be captured and sent to the radio)
-  // or as custom uploaded audio clips (one per digit + attention/end
-  // phrases), which CAN be captured and, like Voice TX and Image TX, routed
-  // to S.outDest — the same DE-19 audio-out path and PTT method the rest of
-  // this app already uses. No separate CAT/HID/audio-out connections here;
-  // it rides on whatever's already connected in the left-hand panel.
+  // exposed to any web API, so it can't be captured and sent to the radio,
+  // and can't be redirected to a specific output device either) or as
+  // custom uploaded audio clips (one per digit + attention/end phrases),
+  // which CAN be captured and, like Voice TX and Image TX, routed to
+  // S.outDest — the same DE-19 audio-out path and PTT method the rest of
+  // this app already uses — or, when not keying the radio, to the shared
+  // Preview/local-playback output (see ensurePreviewRouting above), so
+  // monitor-only listening goes wherever "nsOutputSelect" points instead of
+  // always the browser/OS default. No separate CAT/HID/audio-out
+  // connections here; it rides on whatever's already connected in the
+  // left-hand panel.
   // =====================================================================
   const ns = S.ns;
   const nsDigitWords = ['zero','one','two','three','four','five','six','seven','eight','nine'];
@@ -1682,6 +1755,9 @@
     toggle.disabled = !canTx;
     if(!canTx) toggle.checked = false;
     $('nsRadioModeHint').style.display = canTx ? 'none' : 'block';
+    $('nsOutputHint').textContent = ns.mode === 'custom'
+      ? "Where audio plays while you're just listening (not sending to the radio)."
+      : "Where audio plays. Browser voices can't be redirected to a specific device by any web API — they'll always use your OS default output regardless of this setting.";
   }
 
   function nsSetMode(m){
@@ -1852,7 +1928,11 @@
     try{
       const src = S.audioCtx.createMediaElementSource(audioEl);
       src.connect(ns.analyser);
-      if(!ns.analyserConnectedToSpeaker){ ns.analyser.connect(S.audioCtx.destination); ns.analyserConnectedToSpeaker = true; }
+      // Route local monitor playback to the shared Preview/local-playback
+      // output (Settings → Audio, or the shortcut select right here on the
+      // panel) instead of always the browser/OS default — same setSinkId
+      // pattern the rest of this app already uses for TX/monitor audio.
+      if(!ns.analyserConnectedToSpeaker){ ns.analyser.connect(ensurePreviewRouting()); ns.analyserConnectedToSpeaker = true; }
       nsConnectAnalyserToRadioOut();
       nsAnalysedElements.add(audioEl);
     }catch(e){ /* clip still plays locally even if the graph tap fails */ }
@@ -2040,7 +2120,8 @@
   // gain, pitch (detune) and speed (playbackRate) controls, looped a chosen
   // number of times, and — like Voice TX / Image TX / Numbers Station —
   // routed to the same shared DE‑19 audio-out + PTT method instead of
-  // bringing its own separate radio connections.
+  // bringing its own separate radio connections, or, for Preview, to the
+  // shared Preview/local-playback output.
   // =====================================================================
   const af = S.audioFile;
 
@@ -2103,7 +2184,7 @@
     gain.gain.value = af.gain;
     src.connect(gain);
     if(af.txToRadio && S.outDest) gain.connect(S.outDest);
-    else gain.connect(S.audioCtx.destination);
+    else gain.connect(ensurePreviewRouting());
     af.currentSource = src;
     af.currentGain = gain;
     src.onended = ()=> afAdvanceLoop();
@@ -2676,7 +2757,7 @@
     if(toRadio && S.outDest){
       gain.connect(S.outDest);
     } else {
-      gain.connect(S.audioCtx.destination);
+      gain.connect(ensurePreviewRouting());
     }
     src.start();
     return src;
