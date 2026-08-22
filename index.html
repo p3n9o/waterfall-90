@@ -112,6 +112,16 @@
   .btn-tune.active{background:var(--red);color:#1a0603;border-color:var(--red);animation:pulse 1s infinite;}
   @keyframes pulse{0%,100%{box-shadow:0 0 6px rgba(255,107,94,.4)}50%{box-shadow:0 0 18px rgba(255,107,94,.85)}}
 
+  .band-row{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;}
+  .band-btn{
+    font-family:var(--mono);font-size:10px;letter-spacing:.04em;text-transform:none;
+    background:var(--panel-2);border:1px solid var(--line);color:var(--text-dim);
+    border-radius:4px;padding:6px 4px;cursor:pointer;flex:1 1 44px;min-width:44px;text-align:center;
+    transition:border-color .15s,color .15s,background .15s;
+  }
+  .band-btn:hover{border-color:var(--phosphor-dim);color:var(--phosphor);}
+  .band-btn.active{border-color:var(--phosphor);color:var(--phosphor);background:#10190f;box-shadow:0 0 8px rgba(143,255,138,.15);}
+
   .vfo{
     font-family:var(--mono);text-align:right;background:#060706;
     border:1px solid var(--line);border-radius:4px;padding:12px 14px;margin-bottom:12px;
@@ -161,6 +171,11 @@
   }
   .scope-head h3{margin:0;}
   .scope-freqs{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;color:var(--text-dim);padding:4px 14px;}
+  .rx-audio-row{display:flex;align-items:center;gap:10px;padding:10px 14px;border-top:1px solid var(--line);}
+  .rx-audio-row .btn{width:auto;flex:none;justify-content:center;padding:8px 12px;}
+  .rx-audio-row .vol-wrap{flex:1;display:flex;align-items:center;gap:8px;}
+  .rx-audio-row .vol-wrap span{font-family:var(--mono);font-size:9px;color:var(--text-dim);letter-spacing:.05em;}
+  .rx-audio-row .vol-wrap input[type=range]{flex:1;}
   #waterfall{display:block;width:100%;height:420px;background:#000;image-rendering:pixelated;}
   .scope-foot{display:flex;gap:8px;padding:10px 14px;border-top:1px solid var(--line);flex-wrap:wrap;}
   .scope-foot .btn{width:auto;flex:1;min-width:140px;justify-content:center;}
@@ -231,6 +246,18 @@
 
       <div class="panel">
         <h3>VFO</h3>
+        <div class="band-row" id="bandRow">
+          <button class="band-btn" data-start="1.800" data-end="2.000">160M</button>
+          <button class="band-btn" data-start="3.500" data-end="4.000">80M</button>
+          <button class="band-btn" data-start="7.000" data-end="7.300">40M</button>
+          <button class="band-btn" data-start="10.100" data-end="10.150">30M</button>
+          <button class="band-btn" data-start="14.000" data-end="14.350">20M</button>
+          <button class="band-btn" data-start="18.068" data-end="18.168">17M</button>
+          <button class="band-btn" data-start="21.000" data-end="21.450">15M</button>
+          <button class="band-btn" data-start="24.890" data-end="24.990">12M</button>
+          <button class="band-btn" data-start="28.000" data-end="29.700">10M</button>
+          <button class="band-btn" data-start="50.000" data-end="54.000">6M</button>
+        </div>
         <div class="vfo">
           <div><span class="hz" id="vfoHz">——.———.——</span></div>
           <div class="mode-row"><span id="vfoMode">MODE —</span><span id="vfoRxTx">RX</span></div>
@@ -248,6 +275,7 @@
         </div>
         <button class="btn" id="btnVfoSwitch" style="margin-top:8px;justify-content:center;">⇄ Switch VFO A/B</button>
         <div class="hint">Display groups digits as <b>MHz.kHz.tens-of-Hz</b> (e.g. <code>14.074.00</code>), matching the G90's own screen. The SET box still takes a plain decimal MHz value. Hover a digit in the display above and scroll to bump the frequency at that digit's place.</div>
+        <div class="hint">Band buttons jump to the bottom edge of each amateur band (e.g. 20M → 14.000 MHz) using commonly-used international edges — actual allocations and mode/power sub-bands vary by country and licence class, so double-check against your own licence before transmitting.</div>
       </div>
 
       <div class="panel">
@@ -288,6 +316,14 @@
         </div>
         <canvas id="waterfall"></canvas>
         <div class="scope-freqs"><span id="wfMinLabel">300 Hz</span><span id="wfCenterLabel"></span><span id="wfMaxLabel">2700 Hz</span></div>
+        <div class="rx-audio-row">
+          <button class="btn" id="btnMonitorToggle">🔇 Listen (muted)</button>
+          <div class="vol-wrap">
+            <span>VOL</span>
+            <input type="range" id="monitorVolume" min="0" max="100" value="60">
+          </div>
+        </div>
+        <div class="hint" style="padding:0 14px 12px;">Plays the DE‑19's receive audio out loud through the output device chosen in <b>Settings → Audio devices → Monitor speaker</b> — independent from the waterfall display and from the TX output, so you can listen on your normal speakers/headphones even while the DE‑19 is picked for transmit audio.</div>
       </div>
 
       <div class="panel" style="margin-top:14px;">
@@ -411,10 +447,12 @@
       <h3>Audio devices</h3>
       <label class="field">Input (DE‑19 receive audio)</label>
       <select id="audioInSelect"><option value="">Connect audio first…</option></select>
-      <label class="field">Output (DE‑19 mic/data input)</label>
+      <label class="field">TX output (DE‑19 mic/data input)</label>
       <select id="audioOutSelect"><option value="">Connect audio first…</option></select>
+      <label class="field">Monitor speaker (listen to receive audio)</label>
+      <select id="audioMonitorSelect"><option value="">Connect audio first…</option></select>
       <button class="btn" id="btnRefreshDevices" style="margin-top:10px;">↻ Refresh device list</button>
-      <div class="hint">Output device selection uses <code>setSinkId</code>, supported in Chromium browsers. Pick the DE‑19 explicitly on multi-soundcard machines.</div>
+      <div class="hint">Output device selection uses <code>setSinkId</code>, supported in Chromium browsers. <b>TX output</b> should be the DE‑19 (it carries image/tune audio to the radio's mic input) — <b>Monitor speaker</b> should normally be your computer's own speakers or headphones, so you can hear the DE‑19's receive audio played back out loud without routing it back into the radio.</div>
     </div>
 
     <div class="panel">
@@ -477,6 +515,7 @@
     hid:null, cm108Bit:2,
     audioCtx:null, analyser:null, micSource:null, micStream:null,
     outEl:null, outDest:null, // for routed output via setSinkId
+    monitorGain:null, monitorDest:null, monitorEl:null, monitorOn:false, monitorVolume:0.6, // RX audio listen-through
     waterfall:{ gain:1.0, min:300, max:2700, speed:3, fft:2048, palette:'phosphor', running:false },
     drive:0.2,
     pttMethod:'cat',
@@ -699,7 +738,30 @@
   function updateVfoDisplay(){
     $('vfoHz').innerHTML = buildFreqDigitsHtml(S.frequencyHz);
     $('freqSet').value = (S.frequencyHz/1e6).toFixed(6);
+    updateBandButtonHighlight();
   }
+
+  // =====================================================================
+  // METER BAND QUICK-TUNE — jumps straight to the bottom edge of the
+  // clicked amateur band. Works whether or not CAT is connected: with CAT
+  // connected it sends the real "set frequency" command, otherwise it just
+  // updates the on-screen VFO so the display stays consistent.
+  // =====================================================================
+  function goToFrequency(hz){
+    hz = Math.max(0, Math.min(99999990, Math.round(hz/10)*10));
+    if(S.catWriter) setFrequency(hz);
+    else { S.frequencyHz = hz; updateVfoDisplay(); }
+  }
+  function updateBandButtonHighlight(){
+    document.querySelectorAll('.band-btn').forEach(btn=>{
+      const startHz = Math.round(parseFloat(btn.dataset.start)*1e6);
+      const endHz = Math.round(parseFloat(btn.dataset.end)*1e6);
+      btn.classList.toggle('active', S.frequencyHz >= startHz && S.frequencyHz <= endHz);
+    });
+  }
+  document.querySelectorAll('.band-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=> goToFrequency(Math.round(parseFloat(btn.dataset.start)*1e6)));
+  });
 
   async function catPTT(on){
     if(!S.catWriter) return;
@@ -903,7 +965,8 @@
       S.analyser.smoothingTimeConstant = 0.15;
       S.micSource.connect(S.analyser);
 
-      // output element for routed playback (setSinkId support)
+      // output element for routed TX playback (setSinkId support) — carries
+      // rendered image/tune audio OUT to the DE-19's mic/data input.
       if(!S.outEl){
         S.outEl = document.createElement('audio');
         S.outEl.autoplay = true;
@@ -912,12 +975,31 @@
       S.outDest = S.audioCtx.createMediaStreamDestination();
       S.outEl.srcObject = S.outDest.stream;
 
+      // Separate RX audio monitor chain: taps the same mic source (the
+      // DE-19's receive audio) into its own gain node and destination, so
+      // it can be played back out loud through a DIFFERENT physical output
+      // device (e.g. the computer's own speakers) than the one carrying TX
+      // audio to the radio. Starts muted (gain 0) until the person taps
+      // "Listen" so nothing plays unexpectedly on connect.
+      S.monitorGain = S.audioCtx.createGain();
+      S.monitorGain.gain.value = S.monitorOn ? S.monitorVolume : 0;
+      S.micSource.connect(S.monitorGain);
+      S.monitorDest = S.audioCtx.createMediaStreamDestination();
+      S.monitorGain.connect(S.monitorDest);
+      if(!S.monitorEl){
+        S.monitorEl = document.createElement('audio');
+        S.monitorEl.autoplay = true;
+        document.body.appendChild(S.monitorEl);
+      }
+      S.monitorEl.srcObject = S.monitorDest.stream;
+
       await refreshDeviceList();
       $('btnAudio').classList.add('connected');
       $('audioState').textContent = 'connected';
       setDot('dotAudioIn','on');
       setDot('dotAudioOut','warn');
       applyOutputSink();
+      applyMonitorSink();
     }catch(err){
       console.error(err);
       alert('Audio connection failed: '+err.message);
@@ -929,12 +1011,19 @@
       const devices = await navigator.mediaDevices.enumerateDevices();
       const ins = devices.filter(d=>d.kind==='audioinput');
       const outs = devices.filter(d=>d.kind==='audiooutput');
-      const inSel = $('audioInSelect'), outSel = $('audioOutSelect');
+      const inSel = $('audioInSelect'), outSel = $('audioOutSelect'), monSel = $('audioMonitorSelect');
       inSel.innerHTML = ins.map(d=>`<option value="${d.deviceId}">${d.label||'Input device'}</option>`).join('') || '<option value="">No inputs found</option>';
-      outSel.innerHTML = outs.map(d=>`<option value="${d.deviceId}">${d.label||'Output device'}</option>`).join('') || '<option value="">No outputs found</option>';
-      // guess DE-19 by label
+      const outOptionsHtml = outs.map(d=>`<option value="${d.deviceId}">${d.label||'Output device'}</option>`).join('') || '<option value="">No outputs found</option>';
+      outSel.innerHTML = outOptionsHtml;
+      monSel.innerHTML = outOptionsHtml;
+      // guess DE-19 by label for the TX output — this is the interface that
+      // should carry rendered image/tune audio to the radio's mic input.
       [...inSel.options].forEach(o=>{ if(/de-?19/i.test(o.textContent)) inSel.value=o.value; });
       [...outSel.options].forEach(o=>{ if(/de-?19/i.test(o.textContent)) outSel.value=o.value; });
+      // The monitor speaker is deliberately NOT auto-guessed to the DE-19 —
+      // it should default to whatever the browser lists first (normally the
+      // system default speakers/headphones), since the whole point is
+      // listening on a device other than the one wired to the radio.
     }catch(err){ console.warn(err); }
   }
 
@@ -951,10 +1040,41 @@
     }
   }
 
+  async function applyMonitorSink(){
+    if(!S.monitorEl || !S.monitorEl.setSinkId) return;
+    const id = $('audioMonitorSelect').value;
+    if(!id) return;
+    try{
+      await S.monitorEl.setSinkId(id);
+    }catch(err){
+      console.warn('Monitor setSinkId failed', err);
+    }
+  }
+
   $('btnAudio').addEventListener('click', connectAudio);
   $('btnRefreshDevices').addEventListener('click', refreshDeviceList);
   $('audioOutSelect').addEventListener('change', applyOutputSink);
+  $('audioMonitorSelect').addEventListener('change', applyMonitorSink);
   $('audioInSelect').addEventListener('change', ()=>{ if(S.micStream) connectAudio(); });
+
+  // =====================================================================
+  // RX AUDIO MONITOR — listen toggle + volume, wired to S.monitorGain
+  // =====================================================================
+  function updateMonitorButton(){
+    const btn = $('btnMonitorToggle');
+    btn.textContent = S.monitorOn ? '🔊 Listening' : '🔇 Listen (muted)';
+    btn.classList.toggle('connected', S.monitorOn);
+  }
+  $('btnMonitorToggle').addEventListener('click', ()=>{
+    if(!S.monitorGain){ alert('Connect DE‑19 audio first.'); return; }
+    S.monitorOn = !S.monitorOn;
+    S.monitorGain.gain.value = S.monitorOn ? S.monitorVolume : 0;
+    updateMonitorButton();
+  });
+  $('monitorVolume').addEventListener('input', e=>{
+    S.monitorVolume = parseInt(e.target.value,10)/100;
+    if(S.monitorOn && S.monitorGain) S.monitorGain.gain.value = S.monitorVolume;
+  });
 
   // =====================================================================
   // WATERFALL RENDER (receive)
@@ -1668,6 +1788,7 @@
   updateFreqLabels();
   updateVfoDisplay();
   updateDurationEstimate();
+  updateMonitorButton();
 })();
 </script>
 </body>
