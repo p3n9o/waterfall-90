@@ -242,6 +242,52 @@
   .theme-reset-row{display:flex;gap:8px;margin-top:12px;}
   .theme-reset-row .btn{width:auto;flex:1;justify-content:center;}
 
+  /* ---- panel drag-to-reorder (iOS home-screen style) ---- */
+  .tabs{justify-content:space-between;align-items:center;}
+  .tabs-left{display:flex;gap:2px;}
+  .tabs-right{display:flex;align-items:center;gap:8px;padding-right:2px;}
+  #btnRearrange{
+    font-family:var(--mono);font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;
+    background:var(--panel-2);border:1px solid var(--line);color:var(--text-dim);
+    border-radius:4px;padding:6px 10px;cursor:pointer;transition:border-color .15s,color .15s,background .15s;
+  }
+  #btnRearrange:hover{color:var(--phosphor);border-color:var(--phosphor-dim);}
+  #btnRearrange.connected{color:var(--phosphor);border-color:var(--phosphor);background:#10190f;}
+
+  .sortable-item{position:relative;}
+  .drag-handle{
+    display:none;position:absolute;top:8px;right:8px;z-index:5;
+    width:26px;height:26px;align-items:center;justify-content:center;
+    font-size:15px;line-height:1;color:var(--phosphor);letter-spacing:-2px;
+    background:var(--panel-2);border:1px solid var(--phosphor-dim);border-radius:5px;
+    cursor:grab;touch-action:none;pointer-events:auto;padding:0;
+  }
+  body.reorder-mode .drag-handle{display:flex;}
+  body.reorder-mode .sortable-item{
+    touch-action:none;cursor:grab;
+    animation:panelWiggle .26s ease-in-out infinite;
+  }
+  body.reorder-mode .sortable-item:nth-child(2n){animation-delay:-.13s;}
+  body.reorder-mode .sortable-item:nth-child(3n){animation-delay:-.19s;}
+  body.reorder-mode .sortable-item > *:not(.drag-handle){pointer-events:none;user-select:none;}
+  body.reorder-mode .sortable-item.dragging{animation:none;}
+  .sortable-item.dragging{
+    position:fixed;z-index:1000;cursor:grabbing;margin:0;
+    box-shadow:0 14px 32px rgba(0,0,0,.55);
+    transform:scale(1.03);opacity:.97;
+  }
+  .sortable-placeholder{
+    border:1.5px dashed var(--phosphor-dim);border-radius:6px;
+    background:rgba(143,255,138,.05);margin-top:clamp(8px,1vw,14px);
+  }
+  .right-col > .sortable-placeholder:first-child{margin-top:0;}
+
+  @keyframes panelWiggle{
+    0%{transform:rotate(-0.6deg);}
+    50%{transform:rotate(0.6deg);}
+    100%{transform:rotate(-0.6deg);}
+  }
+
   footer{
     text-align:center;font-family:var(--mono);font-size:10px;color:var(--text-dim);
     padding:20px 20px 36px;letter-spacing:.03em;
@@ -269,8 +315,13 @@
 </div>
 
 <div class="tabs">
-  <button class="tab-btn active" data-tab="radio">Radio</button>
-  <button class="tab-btn" data-tab="settings">Settings</button>
+  <div class="tabs-left">
+    <button class="tab-btn active" data-tab="radio">Radio</button>
+    <button class="tab-btn" data-tab="settings">Settings</button>
+  </div>
+  <div class="tabs-right">
+    <button id="btnRearrange" title="Drag panels to reorder them">⠿ Rearrange</button>
+  </div>
 </div>
 
 <!-- ===================== RADIO VIEW ===================== -->
@@ -279,7 +330,8 @@
 
     <!-- left rack -->
     <div class="rack">
-      <div class="panel">
+      <div class="panel sortable-item" data-panel-id="connections">
+        <button class="drag-handle" type="button" aria-label="Drag to reorder" tabindex="-1">⠿</button>
         <h3>Connections</h3>
         <button class="btn" id="btnCat">Connect CAT (Web Serial)<small id="catState">not connected</small></button>
         <div style="height:8px"></div>
@@ -289,7 +341,8 @@
         <div class="hint">Close other CAT/audio apps first — only one program can hold the port at a time.</div>
       </div>
 
-      <div class="panel">
+      <div class="panel sortable-item" data-panel-id="vfo">
+        <button class="drag-handle" type="button" aria-label="Drag to reorder" tabindex="-1">⠿</button>
         <h3>VFO</h3>
         <div class="band-row" id="bandRow">
           <button class="band-btn" data-start="1.800" data-end="2.000">160M</button>
@@ -323,7 +376,8 @@
         <div class="hint">Bands jump to the lower edge — verify against your own licence before TX.</div>
       </div>
 
-      <div class="panel">
+      <div class="panel sortable-item" data-panel-id="atu-ptt-tx">
+        <button class="drag-handle" type="button" aria-label="Drag to reorder" tabindex="-1">⠿</button>
         <h3>Antenna tuner, PTT &amp; TX</h3>
 
         <h3 class="sub">ATU (built‑in tuner)</h3>
@@ -356,8 +410,9 @@
     </div>
 
     <!-- right: waterfall -->
-    <div>
-      <div class="scope-wrap">
+    <div class="right-col">
+      <div class="scope-wrap sortable-item" data-panel-id="waterfall">
+        <button class="drag-handle" type="button" aria-label="Drag to reorder" tabindex="-1">⠿</button>
         <div class="scope-head">
           <h3 style="margin:0;">Waterfall — receive<span id="scopeTxBadge" style="display:none;color:var(--red);font-family:var(--mono);font-size:10px;letter-spacing:.08em;margin-left:10px;">● TRANSMITTING</span></h3>
           <div class="btn-row" style="width:auto;">
@@ -376,7 +431,8 @@
         <div class="hint" style="padding:0 12px 10px;">Plays RX audio through the device set in <b>Settings → Audio → Monitor speaker</b>.</div>
       </div>
 
-      <div class="panel" style="margin-top:14px;">
+      <div class="panel sortable-item" data-panel-id="transmit" style="margin-top:14px;">
+        <button class="drag-handle" type="button" aria-label="Drag to reorder" tabindex="-1">⠿</button>
         <h3>Transmit</h3>
         <div class="subtab-row">
           <button class="subtab-btn active" data-subtab="txSubImage">Image / Text</button>
@@ -644,6 +700,13 @@
       document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
       btn.classList.add('active');
       $('view-'+btn.dataset.tab).classList.add('active');
+      const rearrangeBtn = $('btnRearrange');
+      if(btn.dataset.tab === 'radio'){
+        rearrangeBtn.style.display = '';
+      } else {
+        rearrangeBtn.style.display = 'none';
+        if(document.body.classList.contains('reorder-mode')) rearrangeBtn.click();
+      }
     });
   });
 
@@ -670,13 +733,6 @@
   // as FE FE <to> <from> <cmd> [data...] FD.
   // =====================================================================
   function civFreqBytes(hz){
-    // Icom CI-V frequency encoding: 5 bytes, LSB byte first. Each byte packs
-    // two decimal digits as BCD with the MORE-significant digit of the pair
-    // in the HIGH nibble (e.g. 14074000 Hz -> 00 40 07 14 00). The previous
-    // version here packed the nibbles the other way round, which silently
-    // sent a garbled frequency to the rig — the G90 would then clamp
-    // whatever nonsense it decoded to its band edge (30 MHz), which is
-    // exactly the "Set Frequency always jumps to 30MHz" symptom.
     let f = Math.round(hz);
     const out = new Uint8Array(5);
     for(let i=0;i<5;i++){
@@ -690,7 +746,6 @@
   }
 
   function civFreqFromBytes(bytes){
-    // Inverse of civFreqBytes — decodes a 5-byte LSB-first BCD frequency.
     let hz = 0, mult = 1;
     for(let i=0;i<5;i++){
       const b = bytes[i];
@@ -702,9 +757,6 @@
   }
 
   function formatFreqDisplay(hz){
-    // G90-style grouping: MHz . kHz(3 digits) . tens-of-Hz(2 digits) — e.g.
-    // 14074000 Hz -> "14.074.00". The rig steps in 10 Hz increments so the
-    // final single Hz digit is always 0 and isn't shown.
     hz = Math.round(hz);
     const mhz = Math.floor(hz/1000000);
     const khz = Math.floor((hz%1000000)/1000);
@@ -712,11 +764,6 @@
     return String(mhz).padStart(2,'0') + '.' + String(khz).padStart(3,'0') + '.' + String(tensOfHz).padStart(2,'0');
   }
 
-  // Place value (in Hz) of each digit position in the formatted string
-  // above, left to right: MHz-tens, MHz-ones, kHz-hundreds, kHz-tens,
-  // kHz-ones, (tens-of-Hz)-tens, (tens-of-Hz)-ones. Used to wrap each digit
-  // in its own span so scroll-to-tune knows exactly how much to add or
-  // subtract for whichever digit the mouse is hovering.
   const FREQ_DIGIT_PLACES = [1e7,1e6,1e5,1e4,1e3,1e2,10];
 
   function buildFreqDigitsHtml(hz){
@@ -734,18 +781,13 @@
   }
 
   function parseCivFrames(buf){
-    // Splits a raw byte stream into individual FE FE ... FD CI-V frames.
-    // Needed because many CAT/USB interfaces echo back every byte you send
-    // before the rig's actual reply arrives, so a naive "find the first
-    // occurrence of my command byte" search matches the echo of your own
-    // outgoing frame instead of the real response.
     const frames = [];
     let i = 0;
     while(i < buf.length-1){
       if(buf[i]===0xFE && buf[i+1]===0xFE){
         let j = i+2;
         while(j<buf.length && buf[j]!==0xFD) j++;
-        if(j>=buf.length) break; // incomplete trailing frame
+        if(j>=buf.length) break;
         frames.push({ to:buf[i+2], from:buf[i+3], cmd:buf[i+4], data:buf.slice(i+5,j) });
         i = j+1;
       } else {
@@ -773,11 +815,6 @@
         parity: 'none',
       });
       S.port = port;
-      // Opening a serial port commonly asserts RTS/DTR HIGH by default at the
-      // driver level. Many cheap CAT/audio interfaces (Xiegu CE-19/DE-19
-      // family included) wire RTS as a hardware PTT line — so without this,
-      // the instant the port opens, the interface reads "key transmitter"
-      // before any CAT command has been sent. De-assert both immediately.
       try{
         await port.setSignals({dataTerminalReady:false, requestToSend:false});
       }catch(err){
@@ -801,7 +838,6 @@
   }
 
   async function catReadResponse(timeoutMs=800){
-    // Read bytes until an FD terminator shows up, or timeout.
     if(!S.catReader) return null;
     const chunks = [];
     let total = 0;
@@ -834,11 +870,6 @@
     await catSend(civFrame(0x03, []));
     const resp = await catReadResponse();
     if(!resp || !resp.length){ $('vfoMode').textContent = 'MODE — (no reply — check CI-V address/baud)'; return; }
-    // Many interfaces echo the bytes we just sent before the rig's actual
-    // reply shows up, and the echo also contains our own command byte — so
-    // parse out every complete frame and pick the one genuinely addressed
-    // TO us (to === our controller address) with 5+ data bytes, rather than
-    // just searching raw bytes for the first 0x03.
     const frames = parseCivFrames(resp);
     const replyFrame = [...frames].reverse().find(f => f.to === myAddr && f.cmd === 0x03 && f.data.length >= 5);
     if(!replyFrame){ $('vfoMode').textContent = 'MODE — (no reply frame — check CI-V address)'; return; }
@@ -853,12 +884,6 @@
     updateBandButtonHighlight();
   }
 
-  // =====================================================================
-  // METER BAND QUICK-TUNE — jumps straight to the bottom edge of the
-  // clicked amateur band. Works whether or not CAT is connected: with CAT
-  // connected it sends the real "set frequency" command, otherwise it just
-  // updates the on-screen VFO so the display stays consistent.
-  // =====================================================================
   function goToFrequency(hz){
     hz = Math.max(0, Math.min(99999990, Math.round(hz/10)*10));
     if(S.catWriter) setFrequency(hz);
@@ -877,7 +902,6 @@
 
   async function catPTT(on){
     if(!S.catWriter) return;
-    // Icom transceive TX ON/OFF: cmd 0x1C 0x00, data 0x01 (on) / 0x00 (off)
     await catSend(civFrame([0x1C,0x00], [on ? 0x01 : 0x00]));
   }
 
@@ -889,22 +913,13 @@
     await S.port.setSignals(signals);
   }
 
-  // =====================================================================
-  // SCROLL-TO-TUNE — hover a digit in the VFO display and scroll the
-  // wheel to bump the frequency up/down at that digit's place value
-  // (e.g. hovering the kHz-tens digit and scrolling up steps by 10 kHz).
-  // Mirrors how real rigs let you spin a knob over a specific digit.
-  // =====================================================================
   let freqScrollPending = null;
   function applyFreqScrollDelta(delta){
-    let newHz = Math.round((S.frequencyHz + delta)/10)*10; // rig steps in 10 Hz increments
+    let newHz = Math.round((S.frequencyHz + delta)/10)*10;
     newHz = Math.max(0, Math.min(99999990, newHz));
     if(newHz === S.frequencyHz) return;
     S.frequencyHz = newHz;
     updateVfoDisplay();
-    // Debounce the actual CAT write slightly so a fast multi-notch scroll
-    // doesn't queue up a burst of serial writes — only the final value
-    // after scrolling settles gets sent to the rig.
     clearTimeout(freqScrollPending);
     freqScrollPending = setTimeout(()=>{
       if(S.catWriter) setFrequency(S.frequencyHz);
@@ -926,13 +941,6 @@
   });
   $('btnReadFreq').addEventListener('click', readFrequency);
 
-  // =====================================================================
-  // VFO A/B select — Icom CI-V command 0x07: data 0x00 selects VFO A,
-  // 0x01 selects VFO B. There's no separate "read which VFO is active"
-  // query used here, so the UI's A/B highlight reflects the last VFO this
-  // app itself selected, not necessarily what's shown on the rig if it was
-  // changed from the front panel in between.
-  // =====================================================================
   async function selectVfo(which){
     if(!S.catWriter){ alert('Connect CAT first.'); return; }
     await catSend(civFrame(0x07, [which === 'A' ? 0x00 : 0x01]));
@@ -947,19 +955,6 @@
   $('btnVfoB').addEventListener('click', ()=> selectVfo('B'));
   $('btnVfoSwitch').addEventListener('click', ()=> selectVfo(S.currentVfo === 'A' ? 'B' : 'A'));
 
-  // =====================================================================
-  // ANTENNA TUNER (real G90 built-in ATU) — Icom CI-V command 0x1C 0x01,
-  // shared across the IC-7100/7200/7300/756PRO CI-V family that the G90's
-  // CAT protocol is modelled on, and the same command FLRIG/Hamlib send
-  // for "tuner on/off/start" on this rig family:
-  //   1C 01 00  — tuner OFF (bypassed)
-  //   1C 01 01  — tuner ON (switched in-line)
-  //   1C 01 02  — TUNE START (rig keys itself briefly and tunes)
-  // This is a real, published Icom CI-V command, but Xiegu's own firmware
-  // isn't guaranteed to implement every sub-command identically — test at
-  // low power into a dummy load or known-good antenna before relying on it
-  // in the field.
-  // =====================================================================
   async function setAtuTuner(on){
     if(!S.catWriter){ alert('Connect CAT first.'); return; }
     await catSend(civFrame([0x1C,0x01], [on ? 0x01 : 0x00]));
@@ -970,11 +965,6 @@
   }
 
   async function pollCivTxStatus(){
-    // Reading 0x1C 0x00 with no data returns the rig's current TX on/off
-    // flag — used here purely to detect when a tune cycle has finished and
-    // the rig has dropped back to RX on its own, since the ATU keys itself
-    // without this app driving PTT. Same echo caveat as readFrequency: pick
-    // the frame actually addressed to us, not an echo of our own request.
     const myAddr = parseInt($('civFrom').value, 16) || 0xE0;
     await catSend(civFrame([0x1C,0x00], []));
     const resp = await catReadResponse(500);
@@ -995,10 +985,6 @@
     $('atuStatus').textContent = 'tuning…';
     try{
       await catSend(civFrame([0x1C,0x01], [0x02]));
-      // Give the rig a moment to actually key up before polling, then watch
-      // the CI-V TX flag until it drops back to RX (tuning complete) or a
-      // generous cap elapses — real ATU cycles on the G90 typically run a
-      // few seconds.
       await new Promise(r=>setTimeout(r,700));
       const deadline = Date.now() + 15000;
       let sawTx = false, finished = false;
@@ -1025,15 +1011,6 @@
   $('btnAtuToggle').addEventListener('click', ()=> setAtuTuner(!S.atuOn));
   $('btnAtuTune').addEventListener('click', startAtuTune);
 
-  // =====================================================================
-  // OPERATING MODE — Icom CI-V command 0x06, one data byte selecting the
-  // mode (same CI-V family as the rest of this app's CAT control):
-  //   00 LSB, 01 USB, 02 AM, 03 CW, 04 RTTY, 05 FM, 06 WFM, 07 CW-R, 08 RTTY-R
-  // Used here purely as a convenience for switching into a phone mode
-  // before Voice TX — some rigs in this CI-V family also want a second
-  // "filter" data byte, which isn't sent here, so double-check the mode
-  // actually took on the rig's own display rather than trusting this blind.
-  // =====================================================================
   async function setMode(modeByte){
     if(!S.catWriter){ alert('Connect CAT first.'); return; }
     await catSend(civFrame(0x06, [modeByte]));
@@ -1041,9 +1018,6 @@
   $('btnModeUSB').addEventListener('click', ()=> setMode(0x01));
   $('btnModeLSB').addEventListener('click', ()=> setMode(0x00));
 
-  // =====================================================================
-  // PTT via WebHID (CM108-style GPIO, common on USB sound-card interfaces)
-  // =====================================================================
   async function connectHID(){
     if(!hasHid){ alert('WebHID is not available in this browser.'); return; }
     try{
@@ -1064,7 +1038,6 @@
     if(!S.hid) return;
     const bit = parseInt($('cm108Bit').value,10);
     const mask = 1 << (bit-1);
-    // CM108-family: output report — byte0 = GPIO data mask select, byte1 = GPIO state
     const report = new Uint8Array([0x00, on ? mask : 0x00, 0x00, 0x00]);
     try{
       await S.hid.sendReport(0x00, report);
@@ -1076,9 +1049,6 @@
 
   $('btnHid').addEventListener('click', connectHID);
 
-  // =====================================================================
-  // AUDIO — capture (waterfall) + output routing (image TX, tune tone)
-  // =====================================================================
   async function connectAudio(){
     try{
       S.audioCtx = S.audioCtx || new (window.AudioContext||window.webkitAudioContext)();
@@ -1093,8 +1063,6 @@
       S.analyser.smoothingTimeConstant = 0.15;
       S.micSource.connect(S.analyser);
 
-      // output element for routed TX playback (setSinkId support) — carries
-      // rendered image/tune audio OUT to the DE-19's mic/data input.
       if(!S.outEl){
         S.outEl = document.createElement('audio');
         S.outEl.autoplay = true;
@@ -1103,12 +1071,6 @@
       S.outDest = S.audioCtx.createMediaStreamDestination();
       S.outEl.srcObject = S.outDest.stream;
 
-      // Separate RX audio monitor chain: taps the same mic source (the
-      // DE-19's receive audio) into its own gain node and destination, so
-      // it can be played back out loud through a DIFFERENT physical output
-      // device (e.g. the computer's own speakers) than the one carrying TX
-      // audio to the radio. Starts muted (gain 0) until the person taps
-      // "Listen" so nothing plays unexpectedly on connect.
       S.monitorGain = S.audioCtx.createGain();
       S.monitorGain.gain.value = S.monitorOn ? S.monitorVolume : 0;
       S.micSource.connect(S.monitorGain);
@@ -1144,14 +1106,8 @@
       const outOptionsHtml = outs.map(d=>`<option value="${d.deviceId}">${d.label||'Output device'}</option>`).join('') || '<option value="">No outputs found</option>';
       outSel.innerHTML = outOptionsHtml;
       monSel.innerHTML = outOptionsHtml;
-      // guess DE-19 by label for the TX output — this is the interface that
-      // should carry rendered image/tune audio to the radio's mic input.
       [...inSel.options].forEach(o=>{ if(/de-?19/i.test(o.textContent)) inSel.value=o.value; });
       [...outSel.options].forEach(o=>{ if(/de-?19/i.test(o.textContent)) outSel.value=o.value; });
-      // The monitor speaker is deliberately NOT auto-guessed to the DE-19 —
-      // it should default to whatever the browser lists first (normally the
-      // system default speakers/headphones), since the whole point is
-      // listening on a device other than the one wired to the radio.
     }catch(err){ console.warn(err); }
   }
 
@@ -1185,13 +1141,6 @@
   $('audioMonitorSelect').addEventListener('change', applyMonitorSink);
   $('audioInSelect').addEventListener('change', ()=>{ if(S.micStream) connectAudio(); });
 
-  // =====================================================================
-  // VOICE TX MICROPHONE — a separate capture path from the DE-19 audio-in
-  // above. That input carries the radio's RECEIVE audio (feeds the
-  // waterfall); this one is your own headset mic, captured independently
-  // and only ever connected to S.outDest (the same DE-19 audio-OUT path
-  // image/tune TX already uses) while Voice PTT is actually held down.
-  // =====================================================================
   async function refreshVoiceMicList(){
     try{
       const devices = await navigator.mediaDevices.enumerateDevices();
@@ -1215,7 +1164,7 @@
       if(S.voiceMicSource) S.voiceMicSource.disconnect();
       S.voiceMicSource = S.audioCtx.createMediaStreamSource(S.voiceMicStream);
       if(!S.voiceGain) S.voiceGain = S.audioCtx.createGain();
-      S.voiceGain.gain.value = 0; // stays silent until Voice PTT is actually held
+      S.voiceGain.gain.value = 0;
       S.voiceMicSource.connect(S.voiceGain);
       if(!S.voiceAnalyser){
         S.voiceAnalyser = S.audioCtx.createAnalyser();
@@ -1246,25 +1195,18 @@
     let sum = 0;
     for(let i=0;i<voiceTimeData.length;i++){ const v=(voiceTimeData[i]-128)/128; sum += v*v; }
     const rms = Math.sqrt(sum/voiceTimeData.length);
-    const pct = Math.min(100, Math.round(rms*100*3)); // *3 headroom so normal speech isn't pinned near zero
+    const pct = Math.min(100, Math.round(rms*100*3));
     $('voiceMeter').style.width = pct+'%';
     $('voiceMeterPct').textContent = pct+'%';
   }
   requestAnimationFrame(animateVoiceMeter);
 
-  // =====================================================================
-  // VOICE PTT — push-to-talk, wired the same way as the main PTT button:
-  // keys the rig via whichever S.pttMethod is configured, and additionally
-  // patches the live mic straight through to S.outDest for the duration.
-  // Requires DE-19 audio to already be connected (for S.outDest to exist),
-  // same as image/tune TX.
-  // =====================================================================
   async function startVoiceTx(){
     if(!S.voiceGain){ alert('Connect a microphone first.'); return; }
     if(!S.outDest){ alert('Connect DE‑19 audio first — Voice TX shares its output path with image TX.'); return; }
     if(S.voiceTxActive) return;
     S.voiceTxActive = true;
-    await enablePTT(); // open-ended hold — the safety cap guards a stuck key, not a fixed duration
+    await enablePTT();
     S.voiceGain.gain.value = S.voiceDrive;
     try{ S.voiceGain.connect(S.outDest); }catch(e){}
     $('btnVoicePtt').classList.add('connected');
@@ -1296,9 +1238,6 @@
     });
   }
 
-  // =====================================================================
-  // RX AUDIO MONITOR — listen toggle + volume, wired to S.monitorGain
-  // =====================================================================
   function updateMonitorButton(){
     const btn = $('btnMonitorToggle');
     btn.textContent = S.monitorOn ? '🔊 Listening' : '🔇 Listen (muted)';
@@ -1315,9 +1254,6 @@
     if(S.monitorOn && S.monitorGain) S.monitorGain.gain.value = S.monitorVolume;
   });
 
-  // =====================================================================
-  // WATERFALL RENDER (receive)
-  // =====================================================================
   const canvas = $('waterfall');
   const ctx = canvas.getContext('2d');
   let dpr = window.devicePixelRatio||1;
@@ -1330,20 +1266,19 @@
   window.addEventListener('resize', resizeCanvas);
   resizeCanvas();
 
-  function palette(t, name){ // t in [0,1] -> [r,g,b]
+  function palette(t, name){
     t = Math.min(1,Math.max(0,t));
     switch(name){
       case 'amber': return [Math.round(255*t), Math.round(180*t*t), Math.round(40*t*t)];
       case 'ice': return [Math.round(60*t*t), Math.round(180*t), Math.round(255*Math.pow(t,0.7))];
       case 'classic': {
-        // blue -> cyan -> yellow -> red
         const stops = [[10,10,80],[0,180,220],[255,230,60],[220,30,30]];
         const seg = t*(stops.length-1);
         const i = Math.min(stops.length-2, Math.floor(seg));
         const f = seg-i;
         return stops[i].map((c,k)=>Math.round(c+(stops[i+1][k]-c)*f));
       }
-      default: return [Math.round(20*t), Math.round(255*Math.pow(t,0.8)), Math.round(60*t*t)]; // phosphor
+      default: return [Math.round(20*t), Math.round(255*Math.pow(t,0.8)), Math.round(60*t*t)];
     }
   }
 
@@ -1359,8 +1294,7 @@
     }
     S.analyser.getByteFrequencyData(freqData);
 
-    const speedPx = S.waterfall.speed; // rows per frame
-    // shift image up
+    const speedPx = S.waterfall.speed;
     const imgData = ctx.getImageData(0, speedPx, w, h-speedPx);
     ctx.putImageData(imgData, 0, 0);
 
@@ -1377,10 +1311,8 @@
         const v = (freqData[bin]||0)/255 * S.waterfall.gain;
         const [r,g,b] = palette(v, S.waterfall.palette);
         const idx = ((h-speedPx+row)*w + x)*4;
-        // draw directly via fillRect for perf fallback below
       }
     }
-    // faster path: build one row and drawImage-scale
     const rowCanvas = document.createElement('canvas');
     rowCanvas.width = span; rowCanvas.height = 1;
     const rctx = rowCanvas.getContext('2d');
@@ -1396,14 +1328,6 @@
     ctx.drawImage(rowCanvas, 0, 0, span, 1, 0, h-speedPx, w, speedPx);
   }
 
-  // =====================================================================
-  // TX PREVIEW — while transmitting an image/text, the mic usually isn't
-  // hearing our own signal, so the live receive waterfall has nothing to
-  // show. Instead, render what we're SENDING onto the same canvas, using
-  // the exact same axis convention (frequency horizontal, time vertical,
-  // growing from the bottom) so it looks like a continuation of the real
-  // waterfall rather than a different view.
-  // =====================================================================
   function buildTxPreviewCanvas(matrix, rows, cols, paletteName){
     const c = document.createElement('canvas');
     c.width = rows; c.height = cols;
@@ -1428,7 +1352,7 @@
     S.txStartTime = performance.now();
     S.txDurationMs = Math.max(1, durationMs);
     S.wasWaterfallRunning = S.waterfall.running;
-    S.waterfall.running = false; // pause the live receive loop while we own the canvas
+    S.waterfall.running = false;
     S.txPreviewActive = true;
     $('scopeTxBadge').style.display = 'inline';
     animateTxPreview();
@@ -1454,8 +1378,6 @@
     ctx.fillRect(0,0,w,h);
     ctx.imageSmoothingEnabled = false;
     const destH = Math.max(1, Math.round((revealedRows/S.txPreviewCols) * h));
-    // anchor to the bottom and grow upward, matching the live loop's
-    // "newest data enters at the bottom" convention
     ctx.drawImage(S.txPreviewCanvas, 0, 0, S.txPreviewCanvas.width, revealedRows, 0, h-destH, w, destH);
   }
 
@@ -1472,9 +1394,6 @@
     $('wfCenterLabel').textContent = Math.round((S.waterfall.min+S.waterfall.max)/2)+' Hz';
   }
 
-  // =====================================================================
-  // IMAGE → WATERFALL AUDIO (additive synthesis / inverse spectrogram)
-  // =====================================================================
   let loadedImage = null;
 
   function loadImageFile(file){
@@ -1487,11 +1406,6 @@
         $('imgPreview').src = e.target.result;
         $('imgPreview').style.display = 'block';
         autoDetectInvert(img);
-        // Same fix as the text-typing feature: fit a mismatched aspect ratio
-        // into the default grid wastes most of the time budget as silent
-        // padding, which is also what was crushing detail (eyes/mouth) out
-        // of the smiley — auto-match Time columns to this image's actual
-        // proportions against the current Frequency rows.
         const rowsSetting = parseInt($('imgRows').value,10) || 64;
         const neededCols = Math.round(rowsSetting * (img.naturalHeight/img.naturalWidth));
         const clampedCols = Math.max(20, Math.min(400, neededCols));
@@ -1506,11 +1420,6 @@
   }
 
   function autoDetectInvert(img){
-    // A typical photo of dark text on a light background (paper, a screen,
-    // a whiteboard) has an average brightness well above 50% — but this
-    // encoder treats bright pixels as "signal on", so it would transmit the
-    // background instead of the subject. Pre-tick Invert automatically when
-    // the source looks light-background; the person can still override it.
     const s = document.createElement('canvas');
     s.width = 40; s.height = 40;
     const sx = s.getContext('2d');
@@ -1554,15 +1463,8 @@
     if(!txt) return;
     const canvasImg = renderTextToCanvas(txt);
     loadedImage = canvasImg;
-    $('imgInvert').checked = false; // rendered text is always white-on-black already
+    $('imgInvert').checked = false;
 
-    // Text is naturally landscape (wide, short) but the default grid
-    // (Frequency rows × Time columns) is portrait-shaped — fitting a
-    // landscape image into a portrait box wastes most of the time budget as
-    // silent padding, which is what compresses the letters into a thin,
-    // hard-to-read band. Auto-adjust Time columns to match this text's
-    // actual proportions against the current Frequency rows, so it fills
-    // the transmission instead of mostly padding it.
     const rowsSetting = parseInt($('imgRows').value,10) || 64;
     const neededCols = Math.round(rowsSetting * (canvasImg.height/canvasImg.width));
     const clampedCols = Math.max(20, Math.min(400, neededCols));
@@ -1582,32 +1484,17 @@
   }
 
   function imageToMatrix(img, cols, rows, gamma, invert, flipH, flipV){
-    // The receive waterfall plots frequency HORIZONTALLY and time VERTICALLY
-    // (top = earliest, bottom = most recent) — the usual ham-radio waterfall
-    // convention (WSJT-X/fldigi-style), not the audio-engineering spectrogram
-    // convention (time horizontal). So the source image must be sampled onto
-    // a canvas sized width=rows (frequency axis) x height=cols (time axis).
     const off = document.createElement('canvas');
     off.width = rows; off.height = cols;
     const octx = off.getContext('2d');
     octx.fillStyle = '#000';
-    octx.fillRect(0, 0, rows, cols); // black = silence, used as letterbox padding below
+    octx.fillRect(0, 0, rows, cols);
 
-    // Fit the source image into the rows×cols box preserving its aspect
-    // ratio (letterbox/pillarbox with silent padding) instead of stretching
-    // it to fill both dimensions exactly — a straight stretch is what turns
-    // a wide photo squeezed into a tall narrow grid into an unrecognisable
-    // smear.
     const iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height;
     const fitScale = Math.min(rows/iw, cols/ih);
     const dw = iw*fitScale, dh = ih*fitScale;
     const dx = (rows-dw)/2, dy = (cols-dh)/2;
 
-    // Flip H mirrors along the frequency axis (left↔right in the
-    // waterfall), flip V mirrors along the time axis (top↔bottom, i.e.
-    // which end of the image is transmitted first). Applied as a full
-    // canvas-space transform before drawing so it works regardless of the
-    // letterbox offset above.
     octx.save();
     if(flipH || flipV){
       octx.translate(flipH ? rows : 0, flipV ? cols : 0);
@@ -1617,7 +1504,7 @@
     octx.restore();
 
     const data = octx.getImageData(0,0,rows,cols).data;
-    const matrix = []; // matrix[freqRow][timeCol] = 0..1 brightness
+    const matrix = [];
     for(let r=0;r<rows;r++) matrix[r] = new Float32Array(cols);
     for(let c=0;c<cols;c++){
       for(let r=0;r<rows;r++){
@@ -1630,11 +1517,6 @@
     return matrix;
   }
 
-  // =====================================================================
-  // Minimal iterative radix-2 FFT (in place, Cooley–Tukey). Used both to
-  // synthesize audio from the image (inverse FFT per frame) — this is the
-  // core of the rewritten encoder below.
-  // =====================================================================
   function fft(re, im, invert){
     const n = re.length;
     for(let i=1, j=0; i<n; i++){
@@ -1682,40 +1564,22 @@
 
     const matrix = imageToMatrix(loadedImage, cols, rows, gamma, invert, flipH, flipV);
 
-    // ---- Inverse-STFT / overlap-add synthesis -------------------------
-    // Instead of switching discrete tones on and off (which splatters
-    // energy into neighbouring frequencies every time a tone's amplitude
-    // steps abruptly), each image column becomes one target magnitude
-    // spectrum, and consecutive Hann-windowed, 50%-overlapping frames are
-    // inverse-FFT'd and summed. This is the same principle used to make a
-    // clean, sharp picture appear in a real spectrogram, and it's dramatically
-    // less prone to the smeared/grainy look block-based tone-switching gives.
-    const N = 2048;               // FFT size — sets frequency resolution
-    const hop = N/4;              // 75% overlap — finer time resolution and a
-                                   // smoother reconstruction than 50%; periodic
-                                   // Hann still satisfies COLA at this hop size.
+    const N = 2048;
+    const hop = N/4;
     const hopsPerCol = Math.max(1, Math.round(frameSec*sr/hop));
     const totalHops = hopsPerCol*cols;
     const totalSamples = totalHops*hop + N;
     const out = new Float32Array(totalSamples);
     const win = new Float32Array(N);
-    // Periodic Hann (denominator N, not N-1) — this is what actually
-    // satisfies the constant-overlap-add condition. Using the "symmetric"
-    // Hann formula here was the bug behind the earlier concentric
-    // ripple/comb pattern: overlapping symmetric windows don't sum to a
-    // constant, so the reconstruction gets a periodic amplitude modulation
-    // stamped across the whole image.
     for(let i=0;i<N;i++) win[i] = 0.5 - 0.5*Math.cos(2*Math.PI*i/N);
 
     const binHz = sr/N;
     const minBin = minF/binHz, maxBin = Math.min(N/2, maxF/binHz);
     const loBin = Math.max(0, Math.ceil(minBin)), hiBin = Math.floor(maxBin);
-    const phase = new Float64Array(N/2+1); // persistent per-bin phase for click-free continuity
+    const phase = new Float64Array(N/2+1);
 
     $('txProgressTrack').style.display = 'block';
 
-    // Precompute one target magnitude spectrum per image column (each
-    // already power-normalized and interpolated onto real FFT bins).
     const magByCol = [];
     for(let c=0;c<cols;c++){
       let activeCount = 0;
@@ -1732,13 +1596,6 @@
       magByCol.push(mag);
     }
 
-    // Walk hop-by-hop across the WHOLE transmission and cross-fade linearly
-    // between each column's spectrum and the next, rather than holding one
-    // column's spectrum static and jumping abruptly at the boundary. That
-    // abrupt jump was still injecting a broadband transient at every column
-    // edge even with the windowing fix — smoothing it out in time, on top of
-    // the frequency-axis interpolation already in place, is what should
-    // finally kill the remaining ghosting/ripple that's software-side.
     for(let hopIndex=0; hopIndex<totalHops; hopIndex++){
       const cf = hopIndex/hopsPerCol;
       const c0 = Math.min(cols-1, Math.floor(cf));
@@ -1748,15 +1605,14 @@
 
       const re = new Float64Array(N), im = new Float64Array(N);
       for(let bin=loBin; bin<=hiBin; bin++){
-        phase[bin] += 2*Math.PI*bin*hop/N; // always advance, even when silent, so re-entry has no phase jump
+        phase[bin] += 2*Math.PI*bin*hop/N;
         const m = magA[bin]*(1-tfrac) + magB[bin]*tfrac;
         if(m > 1e-6){
           re[bin] = m*Math.cos(phase[bin]);
           im[bin] = m*Math.sin(phase[bin]);
-          if(bin>0 && bin<N/2){ re[N-bin]=re[bin]; im[N-bin]=-im[bin]; } // conjugate symmetry -> real output
+          if(bin>0 && bin<N/2){ re[N-bin]=re[bin]; im[N-bin]=-im[bin]; }
         }
       }
-      // still advance phase for bins outside the used range so it stays consistent
       for(let bin=0; bin<loBin; bin++) phase[bin] += 2*Math.PI*bin*hop/N;
       for(let bin=hiBin+1; bin<=N/2; bin++) phase[bin] += 2*Math.PI*bin*hop/N;
 
@@ -1769,10 +1625,6 @@
       }
     }
 
-    // Global normalize to a safe peak, then a gentle soft-knee limiter as a
-    // last line of defence against any remaining transients — keeps the
-    // signal's crest factor low and predictable so it sits comfortably
-    // under the rig's ALC threshold instead of pumping it.
     let peak = 0;
     for(let i=0;i<totalSamples;i++) peak = Math.max(peak, Math.abs(out[i]));
     if(peak > 0){ const g = 0.85/peak; for(let i=0;i<totalSamples;i++) out[i]*=g; }
@@ -1815,24 +1667,11 @@
 
   $('btnTxImage').addEventListener('click', async ()=>{
     if(!S.renderedBuffer) return;
-    // Give the safety timer enough headroom to cover the whole rendered
-    // buffer PLUS the output-path tail latency (see txTailMs) so long
-    // images at slow transmit speeds don't get their PTT yanked mid-picture.
     await enablePTT(S.renderedBuffer.duration*1000 + S.txTailMs + 3000);
     startTxPreview(S.lastMatrix, S.lastMatrixRows, S.lastMatrixCols, S.renderedBuffer.duration*1000);
     try{
       const src = playBuffer(S.renderedBuffer, true);
-      // AudioBufferSourceNode.onended fires the instant the buffer finishes
-      // inside the WebAudio graph — but the actual sound still has to work
-      // its way through the MediaStreamAudioDestinationNode -> MediaStream
-      // -> <audio> element -> DE-19 output path, which lags behind the
-      // graph's own clock. Dropping PTT right on onended was clipping the
-      // last stretch of every image. Hold PTT open for the extra padding
-      // (Settings/PTT panel: "TX audio output latency padding") before
-      // actually releasing it.
       src.onended = ()=> { setTimeout(()=>{ disablePTT(); stopTxPreview(); }, S.txTailMs); };
-      // Belt-and-braces: also release a moment after the buffer's expected
-      // duration + tail, in case onended never fires (e.g. context stayed suspended).
       const expectedMs = (S.renderedBuffer.duration*1000) + S.txTailMs + 1500;
       setTimeout(()=>{
         if($('vfoRxTx').textContent==='TX') disablePTT();
@@ -1845,16 +1684,10 @@
     }
   });
 
-  // =====================================================================
-  // PTT unified control
-  // =====================================================================
   let pttSafetyTimer = null;
-  const PTT_SAFETY_MS = 120000; // default auto-release cap (2 min) for open-ended keying, e.g. the manual PTT button
+  const PTT_SAFETY_MS = 120000;
 
   async function enablePTT(minHoldMs){
-    // A suspended AudioContext is the #1 cause of "stuck on transmit": if the
-    // context never resumes, a buffer's onended callback (which releases PTT
-    // after an image TX) never fires. Always resume before keying up.
     if(S.audioCtx && S.audioCtx.state === 'suspended'){
       try{ await S.audioCtx.resume(); }catch(e){ console.warn('audioCtx.resume failed', e); }
     }
@@ -1869,12 +1702,6 @@
     $('vfoRxTx').style.color = 'var(--red)';
     $('btnPanicRelease').style.display = 'block';
     clearTimeout(pttSafetyTimer);
-    // The safety cap exists to rescue a "stuck on TX" state, not to cap a
-    // known-length transmission — a rendered image/tune tone can legitimately
-    // run past the default 2 min cap at slow transmit speeds or high
-    // resolution. Callers that know how long they need (image TX, tune) pass
-    // that duration in and the cap stretches to cover it, so it only ever
-    // acts as a genuine failsafe rather than an early cutoff.
     const safetyMs = Math.max(PTT_SAFETY_MS, minHoldMs || 0);
     pttSafetyTimer = setTimeout(()=>{
       console.warn('PTT safety timeout hit — forcing release');
@@ -1884,8 +1711,6 @@
 
   async function disablePTT(){
     clearTimeout(pttSafetyTimer);
-    // try/finally so a failed CAT/HID write can never leave the on-screen
-    // state (or a retry) stuck showing TX.
     try{
       if(S.pttMethod === 'hid') await hidPTT(false);
       else if(S.pttMethod === 'rts' || S.pttMethod === 'dtr') await serialLinePTT(false, S.pttMethod);
@@ -1909,32 +1734,21 @@
   pttBtn.addEventListener('touchstart', e=>{e.preventDefault(); enablePTT();});
   ['mouseup','mouseleave','touchend','touchcancel'].forEach(evt=> pttBtn.addEventListener(evt, disablePTT));
 
-  // Safety net: if the pointer is released or dragged off the button, or the
-  // tab loses focus/visibility, or you close/hide the app while keyed, force
-  // PTT off rather than trusting only the button's own events. Voice TX has
-  // its own patch-through (mic -> outDest) that also needs tearing down, not
-  // just the rig's PTT line, or the mic would stay silently connected.
   window.addEventListener('mouseup', ()=>{ disablePTT(); stopVoiceTx(); });
   window.addEventListener('touchend', ()=>{ disablePTT(); stopVoiceTx(); });
   window.addEventListener('blur', ()=>{ disablePTT(); stopVoiceTx(); });
   document.addEventListener('visibilitychange', ()=>{ if(document.hidden){ disablePTT(); stopVoiceTx(); } });
 
-  // Visible panic button — always available the moment PTT is engaged.
   $('btnPanicRelease').addEventListener('click', async ()=>{
     stopTune();
     stopTxPreview();
     await stopVoiceTx();
     await disablePTT();
-    // Belt and braces: force every possible keying mechanism low, in case
-    // the active pttMethod isn't the one actually holding the rig keyed.
     try{ if(S.port) await S.port.setSignals({dataTerminalReady:false, requestToSend:false}); }catch(e){}
     try{ if(S.hid) await hidPTT(false); }catch(e){}
     try{ if(S.catWriter) await catPTT(false); }catch(e){}
   });
 
-  // =====================================================================
-  // TEST TUNE — constant carrier
-  // =====================================================================
   async function toggleTune(){
     if(!S.audioCtx) S.audioCtx = new (window.AudioContext||window.webkitAudioContext)();
     if(S.tuning){
@@ -1945,10 +1759,6 @@
     $('btnTune').textContent = '■ Stop carrier';
     $('btnTune').classList.add('active');
     const timeoutSec = parseInt($('tuneTimeout').value,10);
-    // Read the configured cutoff before keying so the PTT safety cap can be
-    // stretched to match it — otherwise a tune timeout set near/above the
-    // default 2 min cap would get silently cut short by the safety timer
-    // instead of by the cutoff the person actually configured.
     await enablePTT(timeoutSec*1000 + 2000);
 
     const freq = parseFloat($('tuneFreq').value);
@@ -1974,9 +1784,6 @@
 
   $('btnTune').addEventListener('click', toggleTune);
 
-  // =====================================================================
-  // SETTINGS wiring
-  // =====================================================================
   function bindRange(id, cb){ $(id).addEventListener('input', e=>cb(parseFloat(e.target.value))); }
 
   bindRange('wfGain', v=>{ S.waterfall.gain=v; $('wfGainVal').textContent=v.toFixed(1)+'×'; });
@@ -2015,7 +1822,6 @@
   bindRange('tuneFreq', v=>{ $('tuneFreqVal').textContent = Math.round(v)+' Hz'; });
   bindRange('tuneTimeout', v=>{ $('tuneTimeoutVal').textContent = Math.round(v)+' s'; });
 
-  // simple fake TX meter animation reacting to drive while transmitting
   setInterval(()=>{
     if(S.tuning || (S.outDest && S.audioCtx && S.audioCtx.state==='running')){
       const pct = Math.round(S.drive*100 * (0.85+Math.random()*0.15));
@@ -2027,12 +1833,6 @@
     }
   }, 150);
 
-  // =====================================================================
-  // THEMES — a wide catalog of presets across several style categories,
-  // plus a fully custom "advanced" theme built from user-picked colours.
-  // Applying a theme just overwrites the CSS custom properties on :root,
-  // since every colour in the UI is already driven from those variables.
-  // =====================================================================
   const DEFAULT_VARS = {
     bg:'#0a0c0a', panel:'#12160f', panel2:'#171c14', line:'#2a3324',
     phosphor:'#8fff8a', phosphorDim:'#3d7a3a', amber:'#ffb454', amberDim:'#8a6428',
@@ -2074,7 +1874,6 @@
   };
 
   function shade(hex, pct){
-    // pct negative darkens toward black, positive lightens toward white
     const n = hex.replace('#','');
     const r = parseInt(n.substring(0,2),16), g = parseInt(n.substring(2,4),16), b = parseInt(n.substring(4,6),16);
     const t = pct<0 ? 0 : 255, p = Math.abs(pct);
@@ -2182,13 +1981,6 @@
     selectTheme('default');
   });
 
-  // =====================================================================
-  // SETTINGS PERSISTENCE — stored in the browser's localStorage on this
-  // device (a page opened over file:// or a plain static host can't set
-  // real HTTP cookies reliably, and localStorage covers the same "remember
-  // my settings next time" need). Only appearance/behaviour settings are
-  // saved — hardware connections always require a fresh permission grant.
-  // =====================================================================
   const STORAGE_KEY = 'waterfall90-settings-v1';
 
   function collectSettings(){
@@ -2264,7 +2056,6 @@
     }
   }
 
-  // Auto-save on any settings-relevant change (cheap — just JSON to localStorage).
   ['wfGain','wfMin','wfMax','wfSpeed','wfFft','wfPalette','driveSlider','txTailSlider',
    'pttMethod','cm108Bit','catBaud','catFraming','civTo','civFrom','monitorVolume',
    'imgCols','imgRows','imgFrame','imgGamma','tuneFreq','tuneTimeout'].forEach(id=>{
@@ -2272,10 +2063,130 @@
     if(el) el.addEventListener('change', saveSettings);
   });
 
+  // =====================================================================
+  // PANEL REORDERING — iOS-homescreen-style drag to reorder the stacked
+  // panels within the left rack and the right column, independently of
+  // each other (each is its own vertical list). Tap "Rearrange" to enter
+  // reorder mode (panels wiggle, a grip handle appears on each), then drag
+  // any panel — by its handle or anywhere on its body — to a new spot in
+  // its own column. Order is remembered per-browser via localStorage.
+  // =====================================================================
+  const REORDER_STORAGE_PREFIX = 'waterfall90-order-';
+
+  function makeSortableGroup(containerEl, groupKey){
+    if(!containerEl) return;
+    let dragEl = null, placeholder = null, pointerId = null, offsetY = 0;
+
+    function itemsIn(){
+      return Array.from(containerEl.children).filter(el=>el.classList.contains('sortable-item'));
+    }
+
+    function onPointerDown(e){
+      if(!document.body.classList.contains('reorder-mode')) return;
+      if(dragEl) return; // one drag at a time
+      const item = e.currentTarget;
+      pointerId = e.pointerId;
+      const rect = item.getBoundingClientRect();
+      offsetY = e.clientY - rect.top;
+      dragEl = item;
+
+      placeholder = document.createElement('div');
+      placeholder.className = 'sortable-placeholder';
+      placeholder.style.height = rect.height+'px';
+      item.parentNode.insertBefore(placeholder, item);
+
+      item.classList.add('dragging');
+      item.style.width = rect.width+'px';
+      item.style.left = rect.left+'px';
+      item.style.top = rect.top+'px';
+      document.body.appendChild(item); // detach from flow, float as a fixed overlay
+
+      try{ item.setPointerCapture(pointerId); }catch(err){}
+      e.preventDefault();
+    }
+
+    function onPointerMove(e){
+      if(!dragEl || e.pointerId !== pointerId) return;
+      dragEl.style.top = (e.clientY - offsetY) + 'px';
+
+      const dragCenter = e.clientY;
+      let inserted = false;
+      for(const sib of Array.from(containerEl.children)){
+        if(sib === placeholder) continue;
+        const r = sib.getBoundingClientRect();
+        const mid = r.top + r.height/2;
+        if(dragCenter < mid){
+          containerEl.insertBefore(placeholder, sib);
+          inserted = true;
+          break;
+        }
+      }
+      if(!inserted) containerEl.appendChild(placeholder);
+    }
+
+    function endDrag(){
+      if(!dragEl) return;
+      try{ dragEl.releasePointerCapture(pointerId); }catch(err){}
+      dragEl.classList.remove('dragging');
+      dragEl.style.position = '';
+      dragEl.style.top = '';
+      dragEl.style.left = '';
+      dragEl.style.width = '';
+      containerEl.insertBefore(dragEl, placeholder);
+      placeholder.remove();
+      dragEl = null;
+      placeholder = null;
+      saveOrder();
+    }
+
+    function onPointerUp(e){
+      if(!dragEl || e.pointerId !== pointerId) return;
+      endDrag();
+    }
+
+    function saveOrder(){
+      const ids = itemsIn().map(el=>el.dataset.panelId);
+      try{ localStorage.setItem(REORDER_STORAGE_PREFIX+groupKey, JSON.stringify(ids)); }
+      catch(err){ console.warn('Could not save panel order', err); }
+    }
+
+    function loadOrder(){
+      let ids = null;
+      try{ ids = JSON.parse(localStorage.getItem(REORDER_STORAGE_PREFIX+groupKey) || 'null'); }
+      catch(err){ ids = null; }
+      if(!Array.isArray(ids)) return;
+      ids.forEach(id=>{
+        const el = containerEl.querySelector(`:scope > .sortable-item[data-panel-id="${id}"]`);
+        if(el) containerEl.appendChild(el);
+      });
+    }
+
+    itemsIn().forEach(item=>{
+      item.addEventListener('pointerdown', onPointerDown);
+    });
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
+    window.addEventListener('pointercancel', onPointerUp);
+
+    loadOrder();
+  }
+
+  function initReorderFeature(){
+    makeSortableGroup(document.querySelector('.rack'), 'rack');
+    makeSortableGroup(document.querySelector('.right-col'), 'right');
+
+    $('btnRearrange').addEventListener('click', ()=>{
+      const on = document.body.classList.toggle('reorder-mode');
+      $('btnRearrange').textContent = on ? '✓ Done' : '⠿ Rearrange';
+      $('btnRearrange').classList.toggle('connected', on);
+    });
+  }
+
   renderThemeSwatches();
   initCustomPickers(DEFAULT_VARS);
   selectTheme('default', true);
   loadSettings();
+  initReorderFeature();
 
   updateFreqLabels();
   updateVfoDisplay();
