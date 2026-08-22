@@ -24,6 +24,7 @@
     --sans: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
   }
   *{box-sizing:border-box;}
+  html{font-size:clamp(13px, 0.55vw + 11px, 16px);}
   html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:var(--sans);}
   body{min-height:100vh;}
   ::selection{background:var(--phosphor-dim);color:#fff;}
@@ -31,7 +32,7 @@
   /* top rail */
   .topbar{
     display:flex;align-items:center;justify-content:space-between;
-    padding:14px 20px;border-bottom:1px solid var(--line);
+    padding:clamp(8px,1.2vw,14px) clamp(12px,2vw,20px);border-bottom:1px solid var(--line);
     background:linear-gradient(180deg,#0d0f0b,#0a0c0a);
     position:sticky;top:0;z-index:20;
   }
@@ -55,38 +56,41 @@
   }
 
   /* tabs */
-  .tabs{display:flex;gap:2px;padding:0 20px;border-bottom:1px solid var(--line);background:var(--bg);}
+  .tabs{display:flex;gap:2px;padding:0 clamp(12px,2vw,20px);border-bottom:1px solid var(--line);background:var(--bg);}
   .tab-btn{
     font-family:var(--mono);font-size:12px;letter-spacing:.06em;text-transform:uppercase;
-    background:none;border:none;color:var(--text-dim);padding:11px 16px;cursor:pointer;
+    background:none;border:none;color:var(--text-dim);padding:9px 14px;cursor:pointer;
     border-bottom:2px solid transparent;transition:color .15s, border-color .15s;
   }
   .tab-btn:hover{color:var(--text);}
   .tab-btn.active{color:var(--phosphor);border-bottom-color:var(--phosphor);}
 
-  .view{display:none;padding:18px 20px 60px;max-width:1400px;margin:0 auto;}
+  .view{display:none;padding:clamp(10px,1.6vw,18px) clamp(12px,2vw,20px) clamp(20px,4vw,40px);max-width:1800px;margin:0 auto;}
   .view.active{display:block;}
 
-  /* layout: radio view */
-  .radio-grid{display:grid;grid-template-columns:300px 1fr;gap:16px;}
+  /* layout: radio view — fluid two-column, collapses to one column on narrow viewports */
+  .radio-grid{display:grid;grid-template-columns:minmax(230px,300px) minmax(0,1fr);gap:clamp(8px,1.2vw,16px);align-items:start;}
   @media (max-width:900px){.radio-grid{grid-template-columns:1fr;}}
+  @media (min-width:1700px){.radio-grid{grid-template-columns:minmax(260px,340px) minmax(0,1fr);}}
 
   .panel{
     background:var(--panel);border:1px solid var(--line);border-radius:6px;
-    padding:14px 14px 16px;
+    padding:clamp(9px,1vw,14px) clamp(9px,1vw,14px) clamp(10px,1.1vw,16px);
   }
-  .panel + .panel{margin-top:14px;}
+  .panel + .panel{margin-top:clamp(8px,1vw,14px);}
   .panel h3{
-    margin:0 0 12px;font-family:var(--mono);font-size:10px;letter-spacing:.12em;
+    margin:0 0 clamp(6px,0.9vw,12px);font-family:var(--mono);font-size:10px;letter-spacing:.12em;
     text-transform:uppercase;color:var(--text-dim);
     display:flex;align-items:center;gap:8px;
   }
   .panel h3::after{content:"";flex:1;height:1px;background:var(--line);}
+  .panel h3.sub{margin:14px 0 8px;font-size:9px;opacity:.85;}
+  .panel h3.sub:first-child{margin-top:0;}
 
   .btn{
     font-family:var(--mono);font-size:12px;letter-spacing:.03em;color:var(--text);
     background:var(--panel-2);border:1px solid var(--line);border-radius:4px;
-    padding:9px 12px;cursor:pointer;width:100%;text-align:left;
+    padding:7px 12px;cursor:pointer;width:100%;text-align:left;
     display:flex;align-items:center;justify-content:space-between;gap:8px;
     transition:border-color .15s, color .15s, background .15s;
   }
@@ -124,9 +128,9 @@
 
   .vfo{
     font-family:var(--mono);text-align:right;background:#060706;
-    border:1px solid var(--line);border-radius:4px;padding:12px 14px;margin-bottom:12px;
+    border:1px solid var(--line);border-radius:4px;padding:10px 12px;margin-bottom:10px;
   }
-  .vfo .hz{font-size:28px;font-weight:600;color:var(--phosphor);text-shadow:0 0 10px rgba(143,255,138,.3);letter-spacing:.02em;cursor:ns-resize;user-select:none;}
+  .vfo .hz{font-size:clamp(20px,2vw,28px);font-weight:600;color:var(--phosphor);text-shadow:0 0 10px rgba(143,255,138,.3);letter-spacing:.02em;cursor:ns-resize;user-select:none;}
   .vfo .hz .freqDigit{padding:0 1px;border-radius:2px;transition:background .1s,color .1s;}
   .vfo .hz .freqDigit:hover{background:rgba(143,255,138,.18);color:#fff;text-shadow:0 0 10px rgba(143,255,138,.7);}
   .vfo .hz .freqSep{opacity:.6;}
@@ -143,22 +147,23 @@
   }
   .freq-input button:hover{color:var(--phosphor);border-color:var(--phosphor-dim);}
 
-  .meter{height:6px;background:#060706;border-radius:3px;overflow:hidden;border:1px solid var(--line);margin-top:8px;}
+  .meter{height:6px;background:#060706;border-radius:3px;overflow:hidden;border:1px solid var(--line);margin-top:6px;}
   .meter .fill{height:100%;width:0%;background:linear-gradient(90deg,var(--phosphor),var(--amber),var(--red));transition:width .05s;}
   .meter-label{display:flex;justify-content:space-between;font-family:var(--mono);font-size:9px;color:var(--text-dim);margin-top:3px;}
 
-  label.field{display:block;font-family:var(--mono);font-size:10px;color:var(--text-dim);letter-spacing:.05em;text-transform:uppercase;margin:12px 0 6px;}
+  label.field{display:block;font-family:var(--mono);font-size:10px;color:var(--text-dim);letter-spacing:.05em;text-transform:uppercase;margin:9px 0 5px;}
   label.field:first-child{margin-top:0;}
   input[type=range]{width:100%;accent-color:var(--phosphor);}
   .range-val{font-family:var(--mono);font-size:11px;color:var(--phosphor);float:right;}
 
   select, .textfield{
     width:100%;font-family:var(--mono);font-size:12px;background:#060706;border:1px solid var(--line);
-    color:var(--text);padding:7px 8px;border-radius:4px;
+    color:var(--text);padding:6px 8px;border-radius:4px;
   }
 
-  .hint{font-size:11px;color:var(--text-dim);line-height:1.5;margin-top:8px;}
+  .hint{font-size:10.5px;color:var(--text-dim);line-height:1.4;margin-top:5px;}
   .hint.warn{color:var(--amber);}
+  .divider{height:1px;background:var(--line);margin:12px 0;}
 
   .atu-status-row{display:flex;justify-content:space-between;align-items:center;font-family:var(--mono);font-size:10px;color:var(--text-dim);margin-top:8px;text-transform:uppercase;letter-spacing:.05em;}
   .atu-status-row span#atuStatus{color:var(--phosphor);text-transform:none;letter-spacing:0;}
@@ -166,18 +171,18 @@
   /* waterfall */
   .scope-wrap{background:var(--panel);border:1px solid var(--line);border-radius:6px;overflow:hidden;}
   .scope-head{
-    display:flex;justify-content:space-between;align-items:center;padding:10px 14px;
+    display:flex;justify-content:space-between;align-items:center;padding:8px 12px;
     border-bottom:1px solid var(--line);
   }
   .scope-head h3{margin:0;}
-  .scope-freqs{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;color:var(--text-dim);padding:4px 14px;}
-  .rx-audio-row{display:flex;align-items:center;gap:10px;padding:10px 14px;border-top:1px solid var(--line);}
-  .rx-audio-row .btn{width:auto;flex:none;justify-content:center;padding:8px 12px;}
+  .scope-freqs{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;color:var(--text-dim);padding:3px 12px;}
+  .rx-audio-row{display:flex;align-items:center;gap:10px;padding:8px 12px;border-top:1px solid var(--line);}
+  .rx-audio-row .btn{width:auto;flex:none;justify-content:center;padding:7px 12px;}
   .rx-audio-row .vol-wrap{flex:1;display:flex;align-items:center;gap:8px;}
   .rx-audio-row .vol-wrap span{font-family:var(--mono);font-size:9px;color:var(--text-dim);letter-spacing:.05em;}
   .rx-audio-row .vol-wrap input[type=range]{flex:1;}
-  #waterfall{display:block;width:100%;height:420px;background:#000;image-rendering:pixelated;}
-  .scope-foot{display:flex;gap:8px;padding:10px 14px;border-top:1px solid var(--line);flex-wrap:wrap;}
+  #waterfall{display:block;width:100%;height:clamp(200px,38vh,420px);background:#000;image-rendering:pixelated;}
+  .scope-foot{display:flex;gap:8px;padding:8px 12px;border-top:1px solid var(--line);flex-wrap:wrap;}
   .scope-foot .btn{width:auto;flex:1;min-width:140px;justify-content:center;}
 
   .drop-zone{
@@ -193,14 +198,53 @@
   .progress-track{height:5px;background:#060706;border:1px solid var(--line);border-radius:3px;overflow:hidden;margin-top:10px;display:none;}
   .progress-fill{height:100%;width:0%;background:var(--teal);transition:width .15s;}
 
+  /* TX mode sub-tabs (Image/Text vs Voice mic), nested inside the TX panel */
+  .subtab-row{display:flex;gap:2px;margin-bottom:12px;border-bottom:1px solid var(--line);}
+  .subtab-btn{
+    font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;
+    background:none;border:none;color:var(--text-dim);padding:7px 10px;cursor:pointer;
+    border-bottom:2px solid transparent;transition:color .15s, border-color .15s;
+  }
+  .subtab-btn:hover{color:var(--text);}
+  .subtab-btn.active{color:var(--phosphor);border-bottom-color:var(--phosphor);}
+  .subtab-view{display:none;}
+  .subtab-view.active{display:block;}
+
   /* settings grid */
-  .settings-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;}
+  .settings-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:clamp(10px,1.4vw,16px);}
 
   .two-col{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
 
+  /* theme picker */
+  .theme-panel{grid-column:1 / -1;}
+  .theme-cat{margin-top:14px;}
+  .theme-cat:first-of-type{margin-top:0;}
+  .theme-cat-label{font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--text-dim);margin-bottom:8px;display:flex;align-items:center;gap:8px;}
+  .theme-cat-label::after{content:"";flex:1;height:1px;background:var(--line);}
+  .theme-swatch-row{display:grid;grid-template-columns:repeat(auto-fill,minmax(108px,1fr));gap:8px;}
+  .theme-swatch{
+    border:1px solid var(--line);border-radius:6px;background:var(--panel-2);cursor:pointer;
+    padding:8px;text-align:left;transition:border-color .15s,transform .1s;font-family:var(--sans);
+  }
+  .theme-swatch:hover{border-color:var(--phosphor-dim);}
+  .theme-swatch:active{transform:translateY(1px);}
+  .theme-swatch.active{border-color:var(--phosphor);box-shadow:0 0 8px rgba(143,255,138,.2);}
+  .theme-swatch .chips{display:flex;gap:3px;margin-bottom:6px;}
+  .theme-swatch .chip{width:14px;height:14px;border-radius:3px;border:1px solid rgba(255,255,255,.08);}
+  .theme-swatch .name{font-size:10.5px;color:var(--text);display:block;line-height:1.3;}
+  .custom-theme-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px;margin-top:8px;}
+  .custom-color-field{display:flex;flex-direction:column;gap:4px;}
+  .custom-color-field label{font-family:var(--mono);font-size:9px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.04em;}
+  .custom-color-field input[type=color]{
+    width:100%;height:32px;border:1px solid var(--line);border-radius:4px;background:var(--panel-2);
+    padding:2px;cursor:pointer;
+  }
+  .theme-reset-row{display:flex;gap:8px;margin-top:12px;}
+  .theme-reset-row .btn{width:auto;flex:1;justify-content:center;}
+
   footer{
     text-align:center;font-family:var(--mono);font-size:10px;color:var(--text-dim);
-    padding:24px 20px 40px;letter-spacing:.03em;
+    padding:20px 20px 36px;letter-spacing:.03em;
   }
 </style>
 </head>
@@ -216,6 +260,7 @@
     <div class="status-chip"><span class="dot" id="dotHid"></span>PTT (HID)</div>
     <div class="status-chip"><span class="dot" id="dotAudioIn"></span>AUDIO IN</div>
     <div class="status-chip"><span class="dot" id="dotAudioOut"></span>AUDIO OUT</div>
+    <div class="status-chip"><span class="dot" id="dotVoiceMic"></span>MIC</div>
   </div>
 </div>
 
@@ -241,7 +286,7 @@
         <button class="btn" id="btnHid">Connect PTT interface (WebHID)<small id="hidState">not connected</small></button>
         <div style="height:8px"></div>
         <button class="btn" id="btnAudio">Connect DE‑19 audio<small id="audioState">not connected</small></button>
-        <div class="hint">Only one application can hold the CAT port or audio device at a time. Close WSJT‑X / SDR Console / OmniRig before connecting here, or bridge through <code>rigctld</code>.</div>
+        <div class="hint">Close other CAT/audio apps first — only one program can hold the port at a time.</div>
       </div>
 
       <div class="panel">
@@ -274,34 +319,39 @@
           <button class="btn" id="btnVfoB">VFO B</button>
         </div>
         <button class="btn" id="btnVfoSwitch" style="margin-top:8px;justify-content:center;">⇄ Switch VFO A/B</button>
-        <div class="hint">Display groups digits as <b>MHz.kHz.tens-of-Hz</b> (e.g. <code>14.074.00</code>), matching the G90's own screen. The SET box still takes a plain decimal MHz value. Hover a digit in the display above and scroll to bump the frequency at that digit's place.</div>
-        <div class="hint">Band buttons jump to the bottom edge of each amateur band (e.g. 20M → 14.000 MHz) using commonly-used international edges — actual allocations and mode/power sub-bands vary by country and licence class, so double-check against your own licence before transmitting.</div>
+        <div class="hint">Digits shown as MHz.kHz.tens‑Hz. Scroll over a digit to tune it directly.</div>
+        <div class="hint">Bands jump to the lower edge — verify against your own licence before TX.</div>
       </div>
 
       <div class="panel">
-        <h3>Antenna tuner (G90 built‑in ATU)</h3>
+        <h3>Antenna tuner, PTT &amp; TX</h3>
+
+        <h3 class="sub">ATU (built‑in tuner)</h3>
         <button class="btn" id="btnAtuToggle">Tuner: bypassed (tap to switch in‑line)</button>
         <div style="height:8px"></div>
         <button class="btn btn-tune" id="btnAtuTune">⚡ Start ATU tune cycle</button>
         <div class="atu-status-row"><span>Status</span><span id="atuStatus">idle</span></div>
-        <div class="hint">Sends the rig's real CI‑V antenna‑tuner commands (the same ones FLRIG/Hamlib use for this rig family) — <b>1C 01 01</b> switches the tuner in‑line, <b>1C 01 02</b> starts a real tuning cycle. The G90 keys itself internally and returns to RX on its own; this app just sends the command and watches the CI‑V TX‑status flag to know when it's done.</div>
-        <div class="hint warn">This is different from "Test tuning" below, which just plays a tone through this app — this button drives the actual hardware tuner relay and briefly transmits. Confirm low power and a connected antenna/dummy load first, and check your licence conditions.</div>
-      </div>
+        <div class="hint warn">Briefly transmits — confirm antenna/dummy load + low power first.</div>
 
-      <div class="panel">
-        <h3>PTT &amp; Drive</h3>
+        <div class="divider"></div>
+
+        <h3 class="sub">PTT &amp; drive</h3>
         <button class="btn btn-primary" id="btnPtt">PTT — hold to transmit</button>
         <button class="btn" id="btnPanicRelease" style="display:none;margin-top:8px;border-color:var(--red);color:var(--red);justify-content:center;">⏹ Force PTT release</button>
-        <label class="field">Mic / drive gain fed to radio <span class="range-val" id="driveVal">20%</span></label>
+        <label class="field">Mic / drive gain <span class="range-val" id="driveVal">20%</span></label>
         <input type="range" id="driveSlider" min="0" max="100" value="20">
         <div class="meter"><div class="fill" id="txMeter"></div></div>
         <div class="meter-label"><span>TX audio level</span><span id="txMeterPct">0%</span></div>
-        <div class="hint warn">A picture with many simultaneous "on" tones (dense letter strokes, filled shapes) reads much louder to the rig than a normal voice or FT8 signal. If a receiving station sees a solid, textured block instead of your picture, that's ALC-driven splatter — turn drive <i>down</i>, not up, and watch the G90's ALC indicator: it should barely move.</div>
-        <div class="hint">Drive sets the level of audio sent to the radio's mic/data input. If CI-V PTT ever misbehaves, the G90's menu also supports VOX keying from the Line In audio as a fallback.</div>
-        <div class="hint">The per-column power in the image encoder is normalized so a busy region and a sparse region hit the radio with roughly the same average level, but overall drive still needs to sit low enough that ALC action stays at or near zero.</div>
-        <label class="field">TX audio output latency padding <span class="range-val" id="txTailVal">700 ms</span></label>
+        <div class="hint warn">Dense images read louder to the rig — if RX looks like a solid block, turn drive down and watch ALC stay near zero.</div>
+        <label class="field">TX output latency padding <span class="range-val" id="txTailVal">700 ms</span></label>
         <input type="range" id="txTailSlider" min="0" max="2000" step="50" value="700">
-        <div class="hint">The rendered image audio finishes flowing through the WebAudio graph slightly before it's actually finished playing out through the DE‑19 (the MediaStream→audio-element output path buffers a bit). This holds PTT open for the extra padding after the buffer ends, so the tail of the picture doesn't get clipped. Raise it if the last sliver of the image is still getting cut off; lower it if PTT is hanging open noticeably after audio stops.</div>
+        <div class="hint">Extra PTT hold after audio ends, so the image tail doesn't clip.</div>
+
+        <div class="divider"></div>
+
+        <h3 class="sub">Test tuning</h3>
+        <button class="btn btn-tune" id="btnTune">Transmit constant carrier (tune)</button>
+        <div class="hint warn">Unmodulated tone, auto-cuts off (timeout in Settings). Low power only.</div>
       </div>
     </div>
 
@@ -323,38 +373,62 @@
             <input type="range" id="monitorVolume" min="0" max="100" value="60">
           </div>
         </div>
-        <div class="hint" style="padding:0 14px 12px;">Plays the DE‑19's receive audio out loud through the output device chosen in <b>Settings → Audio devices → Monitor speaker</b> — independent from the waterfall display and from the TX output, so you can listen on your normal speakers/headphones even while the DE‑19 is picked for transmit audio.</div>
+        <div class="hint" style="padding:0 12px 10px;">Plays RX audio through the device set in <b>Settings → Audio → Monitor speaker</b>.</div>
       </div>
 
       <div class="panel" style="margin-top:14px;">
-        <h3>Image → waterfall transmit</h3>
-        <div class="drop-zone" id="dropZone">
-          Click or drop a photo — it will be rendered into the waterfall as it transmits.
-          <input type="file" id="fileInput" accept="image/*">
+        <h3>Transmit</h3>
+        <div class="subtab-row">
+          <button class="subtab-btn active" data-subtab="txSubImage">Image / Text</button>
+          <button class="subtab-btn" data-subtab="txSubVoice">Voice (mic)</button>
         </div>
-        <div class="freq-input" style="margin-top:10px;">
-          <input type="text" id="textInput" placeholder="…or type text to send as waterfall text instead">
-          <button id="btnRenderText">Use text</button>
-        </div>
-        <div class="preview-row">
-          <img id="imgPreview">
-          <div class="preview-info" id="imgInfo">No image loaded.</div>
-        </div>
-        <label class="field">Transmit speed <span class="range-val" id="txSpeedVal">Normal — 0.09s/column</span></label>
-        <input type="range" id="txSpeedSlider" min="0.03" max="0.3" step="0.01" value="0.09">
-        <div class="progress-track" id="txProgressTrack"><div class="progress-fill" id="txProgressFill"></div></div>
-        <div class="scope-foot">
-          <button class="btn btn-primary" id="btnRenderImage" disabled>1 · Render to audio</button>
-          <button class="btn btn-primary" id="btnPreviewImage" disabled>▶ Preview (speaker)</button>
-          <button class="btn btn-tune" id="btnTxImage" disabled>2 · Transmit over air</button>
-        </div>
-        <div class="hint">Image is converted to grayscale, then rendered as a proper inverse-spectrogram (overlap-add sine synthesis) — one row of pixels per frequency bin, one column per time slice — so it redraws as a picture in a receiving station's waterfall. Slower transmit speed = more time per column = sharper detail but a longer time on air. Fine-tune resolution in <b>Settings → Image encode</b>.</div>
-      </div>
 
-      <div class="panel" style="margin-top:14px;">
-        <h3>Test tuning</h3>
-        <button class="btn btn-tune" id="btnTune">Transmit constant carrier (tune)</button>
-        <div class="hint warn">Keys PTT and sends an unmodulated tone at the carrier frequency set in Settings. Auto-cuts off after the configured safety timeout. Use only briefly, at low power, for antenna/amp tuning — check your licence conditions before transmitting.</div>
+        <div class="subtab-view active" id="txSubImage">
+          <div class="drop-zone" id="dropZone">
+            Click or drop a photo — it will be rendered into the waterfall as it transmits.
+            <input type="file" id="fileInput" accept="image/*">
+          </div>
+          <div class="freq-input" style="margin-top:10px;">
+            <input type="text" id="textInput" placeholder="…or type text to send as waterfall text instead">
+            <button id="btnRenderText">Use text</button>
+          </div>
+          <div class="preview-row">
+            <img id="imgPreview">
+            <div class="preview-info" id="imgInfo">No image loaded.</div>
+          </div>
+          <label class="field">Transmit speed <span class="range-val" id="txSpeedVal">Normal — 0.09s/column</span></label>
+          <input type="range" id="txSpeedSlider" min="0.03" max="0.3" step="0.01" value="0.09">
+          <div class="progress-track" id="txProgressTrack"><div class="progress-fill" id="txProgressFill"></div></div>
+          <div class="scope-foot">
+            <button class="btn btn-primary" id="btnRenderImage" disabled>1 · Render to audio</button>
+            <button class="btn btn-primary" id="btnPreviewImage" disabled>▶ Preview (speaker)</button>
+            <button class="btn btn-tune" id="btnTxImage" disabled>2 · Transmit over air</button>
+          </div>
+          <div class="hint">Renders as a picture in a receiving waterfall. Slower speed = sharper detail. Fine-tune in <b>Settings → Image encode</b>.</div>
+        </div>
+
+        <div class="subtab-view" id="txSubVoice">
+          <label class="field">Microphone (headset)</label>
+          <select id="voiceMicSelect"><option value="">Default microphone</option></select>
+          <button class="btn" id="btnConnectVoiceMic" style="margin-top:8px;">Connect microphone<small id="voiceMicState">not connected</small></button>
+
+          <div class="meter" style="margin-top:14px;"><div class="fill" id="voiceMeter"></div></div>
+          <div class="meter-label"><span>Mic input level</span><span id="voiceMeterPct">0%</span></div>
+
+          <label class="field">Mic TX gain <span class="range-val" id="voiceDriveVal">50%</span></label>
+          <input type="range" id="voiceDriveSlider" min="0" max="100" value="50">
+
+          <button class="btn btn-primary" id="btnVoicePtt" style="margin-top:14px;">🎙 Voice PTT — hold to transmit</button>
+          <div class="hint warn">Keys the rig exactly like the main PTT button in the left panel — release to unkey. Shares the same DE‑19 audio-out path as image TX, so connect DE‑19 audio (left panel) first.</div>
+
+          <div class="divider"></div>
+          <div class="hint">Voice needs the rig in a phone mode (USB/LSB), not whatever mode you last used for image/data. Quick-set via CAT:</div>
+          <div class="btn-row" style="margin-top:6px;">
+            <button class="btn" id="btnModeUSB">Set mode → USB</button>
+            <button class="btn" id="btnModeLSB">Set mode → LSB</button>
+          </div>
+          <div class="hint">Uses the same Icom CI‑V command family as the rest of this app's CAT control — verify the mode actually switches on the rig's own display before transmitting.</div>
+        </div>
       </div>
     </div>
   </div>
@@ -438,9 +512,9 @@
         <option value="3">GPIO 3 (0x04)</option>
         <option value="4">GPIO 4 (0x08)</option>
       </select>
-      <div class="hint">The G90 speaks Icom CI-V (it CATs as an IC‑7100/IC‑756PRO clone), hex addresses shown without the "0x" — commonly <b>70</b> on older firmware, controller <b>E0</b>, 19200 baud. <b>Some units/firmware report as A4 instead</b> (this shows up in Hamlib logs for the G90) — the address is also user-changeable in the rig's own CI‑V menu, so if "Read frequency" comes back empty, try A4 here or check the rig's menu before assuming CAT itself is broken.</div>
-      <div class="hint">The G90's 4‑pin "PA" port is a TX/BAND/ALC keying <i>output</i> for an amplifier, not a computer‑to‑radio PTT input. If CI‑V PTT ever doesn't key the rig, your interface may instead expect a hardware RTS or DTR toggle — try those options above. RTS/DTR are always forced low the instant CAT connects, specifically so opening the port itself can't accidentally key the transmitter.</div>
-      <div class="hint warn">Xiegu's own CAT guide notes that leaving a polling CAT program connected and then power-cycling the G90 can be misread as the firmware‑update key combo — disconnect CAT software when you're done.</div>
+      <div class="hint">G90 CATs as an IC‑7100 clone — addr <b>70</b>, controller <b>E0</b>, 19200 baud. Some firmware uses <b>A4</b> instead; try it if "Read frequency" comes back empty.</div>
+      <div class="hint">The "PA" port is amp-keying output, not a PTT input. If CI‑V PTT doesn't key the rig, try RTS/DTR above.</div>
+      <div class="hint warn">Disconnect CAT software when done — power-cycling while connected can trigger firmware-update mode.</div>
     </div>
 
     <div class="panel">
@@ -452,7 +526,7 @@
       <label class="field">Monitor speaker (listen to receive audio)</label>
       <select id="audioMonitorSelect"><option value="">Connect audio first…</option></select>
       <button class="btn" id="btnRefreshDevices" style="margin-top:10px;">↻ Refresh device list</button>
-      <div class="hint">Output device selection uses <code>setSinkId</code>, supported in Chromium browsers. <b>TX output</b> should be the DE‑19 (it carries image/tune audio to the radio's mic input) — <b>Monitor speaker</b> should normally be your computer's own speakers or headphones, so you can hear the DE‑19's receive audio played back out loud without routing it back into the radio.</div>
+      <div class="hint">Requires a Chromium browser. <b>TX output</b> = DE‑19 (carries audio to the radio). <b>Monitor</b> = your speakers/headphones. The headset microphone for <b>Voice TX</b> is picked on the Radio tab's Voice sub-panel.</div>
     </div>
 
     <div class="panel">
@@ -468,8 +542,8 @@
         </div>
       </div>
       <div class="hint">
-        <b>Time columns</b> — how many time-steps the image is divided into along its playback duration. Higher = smoother horizontal (time-axis) detail but a longer transmission.<br>
-        <b>Frequency rows</b> — how many distinct tones make up the audio passband width. Higher = finer left-right picture detail, but each tone gets a narrower slice of the Min/Max frequency range above, so very high values can sound muddier on a narrow passband.
+        <b>Time columns</b> — more = sharper time detail, longer transmission.<br>
+        <b>Frequency rows</b> — more = finer left-right detail, but each tone gets less passband.
       </div>
       <label class="field">Seconds per column <span class="range-val" id="imgFrameVal">0.09 s</span></label>
       <input type="range" id="imgFrame" min="0.03" max="0.3" step="0.01" value="0.09">
@@ -487,8 +561,8 @@
         <span>Flip vertical (mirror top↔bottom)</span>
         <input type="checkbox" id="imgFlipV" style="width:auto;accent-color:var(--phosphor);">
       </label>
-      <div class="hint">Flips apply to the rendered transmission only (the thumbnail preview above stays as-loaded), so you can compare orientation against how a receiving station's waterfall actually draws it.</div>
-      <div class="hint">Bright pixels are transmitted as "on" tones — correct for light text/shapes on a dark photo. Most ordinary photos (dark ink on paper, a printed page) are the opposite, so this is auto-ticked when an uploaded photo's average brightness looks light-background; override it if the result looks backwards.</div>
+      <div class="hint">Flips apply to the transmission only — the preview thumbnail stays as-loaded.</div>
+      <div class="hint">Bright pixels = "on" tones. Auto-ticked for light-background photos; override if it looks backwards.</div>
       <div class="hint" id="imgDurationHint">Estimated transmit time: ~12.6 s</div>
     </div>
 
@@ -498,6 +572,31 @@
       <input type="range" id="tuneFreq" min="300" max="2700" step="10" value="1500">
       <label class="field">Safety cutoff (seconds) <span class="range-val" id="tuneTimeoutVal">30 s</span></label>
       <input type="range" id="tuneTimeout" min="5" max="120" step="5" value="30">
+    </div>
+
+    <div class="panel theme-panel">
+      <h3>Appearance / Themes</h3>
+      <div id="themeCategories"></div>
+
+      <div class="theme-cat">
+        <div class="theme-cat-label">Advanced — custom colours</div>
+        <div class="custom-theme-grid">
+          <div class="custom-color-field"><label>Background</label><input type="color" id="cBg"></div>
+          <div class="custom-color-field"><label>Panel</label><input type="color" id="cPanel"></div>
+          <div class="custom-color-field"><label>Panel accent</label><input type="color" id="cPanel2"></div>
+          <div class="custom-color-field"><label>Border/line</label><input type="color" id="cLine"></div>
+          <div class="custom-color-field"><label>Primary accent</label><input type="color" id="cAccent"></div>
+          <div class="custom-color-field"><label>Secondary accent</label><input type="color" id="cAmber"></div>
+          <div class="custom-color-field"><label>Alert / red</label><input type="color" id="cRed"></div>
+          <div class="custom-color-field"><label>Text</label><input type="color" id="cText"></div>
+          <div class="custom-color-field"><label>Text (dim)</label><input type="color" id="cTextDim"></div>
+        </div>
+        <div class="hint">Pick colours above, then apply — saved as your custom theme.</div>
+        <div class="theme-reset-row">
+          <button class="btn btn-primary" id="btnApplyCustom" style="justify-content:center;">Apply custom theme</button>
+          <button class="btn" id="btnResetTheme" style="justify-content:center;">Reset to default</button>
+        </div>
+      </div>
     </div>
 
   </div>
@@ -525,6 +624,8 @@
     atuOn:false, atuTuning:false,
     currentVfo:null,
     txTailMs:700,
+    voiceMicStream:null, voiceMicSource:null, voiceGain:null, voiceAnalyser:null,
+    voiceTxActive:false, voiceDrive:0.5,
   };
 
   const $ = id => document.getElementById(id);
@@ -551,6 +652,17 @@
     d.classList.remove('on','warn','off');
     if(state) d.classList.add(state);
   }
+
+  // ---------- TX sub-tabs (Image/Text vs Voice) ----------
+  document.querySelectorAll('.subtab-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const group = btn.closest('.panel');
+      group.querySelectorAll('.subtab-btn').forEach(b=>b.classList.remove('active'));
+      group.querySelectorAll('.subtab-view').forEach(v=>v.classList.remove('active'));
+      btn.classList.add('active');
+      $(btn.dataset.subtab).classList.add('active');
+    });
+  });
 
   // =====================================================================
   // CAT CONTROL (Web Serial) — Icom CI-V, which the G90 speaks (behaves as
@@ -914,6 +1026,22 @@
   $('btnAtuTune').addEventListener('click', startAtuTune);
 
   // =====================================================================
+  // OPERATING MODE — Icom CI-V command 0x06, one data byte selecting the
+  // mode (same CI-V family as the rest of this app's CAT control):
+  //   00 LSB, 01 USB, 02 AM, 03 CW, 04 RTTY, 05 FM, 06 WFM, 07 CW-R, 08 RTTY-R
+  // Used here purely as a convenience for switching into a phone mode
+  // before Voice TX — some rigs in this CI-V family also want a second
+  // "filter" data byte, which isn't sent here, so double-check the mode
+  // actually took on the rig's own display rather than trusting this blind.
+  // =====================================================================
+  async function setMode(modeByte){
+    if(!S.catWriter){ alert('Connect CAT first.'); return; }
+    await catSend(civFrame(0x06, [modeByte]));
+  }
+  $('btnModeUSB').addEventListener('click', ()=> setMode(0x01));
+  $('btnModeLSB').addEventListener('click', ()=> setMode(0x00));
+
+  // =====================================================================
   // PTT via WebHID (CM108-style GPIO, common on USB sound-card interfaces)
   // =====================================================================
   async function connectHID(){
@@ -1052,10 +1180,121 @@
   }
 
   $('btnAudio').addEventListener('click', connectAudio);
-  $('btnRefreshDevices').addEventListener('click', refreshDeviceList);
+  $('btnRefreshDevices').addEventListener('click', ()=>{ refreshDeviceList(); refreshVoiceMicList(); });
   $('audioOutSelect').addEventListener('change', applyOutputSink);
   $('audioMonitorSelect').addEventListener('change', applyMonitorSink);
   $('audioInSelect').addEventListener('change', ()=>{ if(S.micStream) connectAudio(); });
+
+  // =====================================================================
+  // VOICE TX MICROPHONE — a separate capture path from the DE-19 audio-in
+  // above. That input carries the radio's RECEIVE audio (feeds the
+  // waterfall); this one is your own headset mic, captured independently
+  // and only ever connected to S.outDest (the same DE-19 audio-OUT path
+  // image/tune TX already uses) while Voice PTT is actually held down.
+  // =====================================================================
+  async function refreshVoiceMicList(){
+    try{
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const ins = devices.filter(d=>d.kind==='audioinput');
+      const sel = $('voiceMicSelect');
+      const cur = sel.value;
+      sel.innerHTML = ins.map(d=>`<option value="${d.deviceId}">${d.label||'Microphone'}</option>`).join('') || '<option value="">No microphones found</option>';
+      if(cur && [...sel.options].some(o=>o.value===cur)) sel.value = cur;
+    }catch(err){ console.warn(err); }
+  }
+
+  async function connectVoiceMic(){
+    try{
+      if(!S.audioCtx) S.audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+      if(S.audioCtx.state === 'suspended') await S.audioCtx.resume();
+      if(S.voiceMicStream){ S.voiceMicStream.getTracks().forEach(t=>t.stop()); }
+      S.voiceMicStream = await navigator.mediaDevices.getUserMedia({audio:{
+        deviceId: $('voiceMicSelect').value ? {exact:$('voiceMicSelect').value} : undefined,
+        echoCancellation:true, noiseSuppression:true, autoGainControl:true,
+      }});
+      if(S.voiceMicSource) S.voiceMicSource.disconnect();
+      S.voiceMicSource = S.audioCtx.createMediaStreamSource(S.voiceMicStream);
+      if(!S.voiceGain) S.voiceGain = S.audioCtx.createGain();
+      S.voiceGain.gain.value = 0; // stays silent until Voice PTT is actually held
+      S.voiceMicSource.connect(S.voiceGain);
+      if(!S.voiceAnalyser){
+        S.voiceAnalyser = S.audioCtx.createAnalyser();
+        S.voiceAnalyser.fftSize = 512;
+      }
+      S.voiceGain.connect(S.voiceAnalyser);
+      await refreshVoiceMicList();
+      $('btnConnectVoiceMic').classList.add('connected');
+      $('voiceMicState').textContent = 'connected';
+      setDot('dotVoiceMic','on');
+    }catch(err){
+      console.error(err);
+      alert('Microphone connection failed: '+err.message);
+    }
+  }
+
+  $('btnConnectVoiceMic').addEventListener('click', connectVoiceMic);
+  $('voiceMicSelect').addEventListener('change', ()=>{ if(S.voiceMicStream) connectVoiceMic(); });
+
+  let voiceTimeData;
+  function animateVoiceMeter(){
+    requestAnimationFrame(animateVoiceMeter);
+    if(!S.voiceAnalyser) return;
+    if(!voiceTimeData || voiceTimeData.length !== S.voiceAnalyser.fftSize){
+      voiceTimeData = new Uint8Array(S.voiceAnalyser.fftSize);
+    }
+    S.voiceAnalyser.getByteTimeDomainData(voiceTimeData);
+    let sum = 0;
+    for(let i=0;i<voiceTimeData.length;i++){ const v=(voiceTimeData[i]-128)/128; sum += v*v; }
+    const rms = Math.sqrt(sum/voiceTimeData.length);
+    const pct = Math.min(100, Math.round(rms*100*3)); // *3 headroom so normal speech isn't pinned near zero
+    $('voiceMeter').style.width = pct+'%';
+    $('voiceMeterPct').textContent = pct+'%';
+  }
+  requestAnimationFrame(animateVoiceMeter);
+
+  // =====================================================================
+  // VOICE PTT — push-to-talk, wired the same way as the main PTT button:
+  // keys the rig via whichever S.pttMethod is configured, and additionally
+  // patches the live mic straight through to S.outDest for the duration.
+  // Requires DE-19 audio to already be connected (for S.outDest to exist),
+  // same as image/tune TX.
+  // =====================================================================
+  async function startVoiceTx(){
+    if(!S.voiceGain){ alert('Connect a microphone first.'); return; }
+    if(!S.outDest){ alert('Connect DE‑19 audio first — Voice TX shares its output path with image TX.'); return; }
+    if(S.voiceTxActive) return;
+    S.voiceTxActive = true;
+    await enablePTT(); // open-ended hold — the safety cap guards a stuck key, not a fixed duration
+    S.voiceGain.gain.value = S.voiceDrive;
+    try{ S.voiceGain.connect(S.outDest); }catch(e){}
+    $('btnVoicePtt').classList.add('connected');
+  }
+
+  async function stopVoiceTx(){
+    if(!S.voiceTxActive) return;
+    S.voiceTxActive = false;
+    if(S.voiceGain){
+      S.voiceGain.gain.value = 0;
+      try{ S.voiceGain.disconnect(S.outDest); }catch(e){}
+    }
+    $('btnVoicePtt').classList.remove('connected');
+    await disablePTT();
+  }
+
+  const voicePttBtn = $('btnVoicePtt');
+  voicePttBtn.addEventListener('mousedown', ()=>startVoiceTx());
+  voicePttBtn.addEventListener('touchstart', e=>{e.preventDefault(); startVoiceTx();});
+  ['mouseup','mouseleave','touchend','touchcancel'].forEach(evt=> voicePttBtn.addEventListener(evt, stopVoiceTx));
+
+  bindRangeVoiceDrive();
+  function bindRangeVoiceDrive(){
+    $('voiceDriveSlider').addEventListener('input', e=>{
+      const v = parseFloat(e.target.value);
+      S.voiceDrive = v/100;
+      $('voiceDriveVal').textContent = Math.round(v)+'%';
+      if(S.voiceTxActive && S.voiceGain) S.voiceGain.gain.value = S.voiceDrive;
+    });
+  }
 
   // =====================================================================
   // RX AUDIO MONITOR — listen toggle + volume, wired to S.monitorGain
@@ -1672,16 +1911,19 @@
 
   // Safety net: if the pointer is released or dragged off the button, or the
   // tab loses focus/visibility, or you close/hide the app while keyed, force
-  // PTT off rather than trusting only the button's own events.
-  window.addEventListener('mouseup', disablePTT);
-  window.addEventListener('touchend', disablePTT);
-  window.addEventListener('blur', disablePTT);
-  document.addEventListener('visibilitychange', ()=>{ if(document.hidden) disablePTT(); });
+  // PTT off rather than trusting only the button's own events. Voice TX has
+  // its own patch-through (mic -> outDest) that also needs tearing down, not
+  // just the rig's PTT line, or the mic would stay silently connected.
+  window.addEventListener('mouseup', ()=>{ disablePTT(); stopVoiceTx(); });
+  window.addEventListener('touchend', ()=>{ disablePTT(); stopVoiceTx(); });
+  window.addEventListener('blur', ()=>{ disablePTT(); stopVoiceTx(); });
+  document.addEventListener('visibilitychange', ()=>{ if(document.hidden){ disablePTT(); stopVoiceTx(); } });
 
   // Visible panic button — always available the moment PTT is engaged.
   $('btnPanicRelease').addEventListener('click', async ()=>{
     stopTune();
     stopTxPreview();
+    await stopVoiceTx();
     await disablePTT();
     // Belt and braces: force every possible keying mechanism low, in case
     // the active pttMethod isn't the one actually holding the rig keyed.
@@ -1784,6 +2026,256 @@
       $('txMeterPct').textContent = '0%';
     }
   }, 150);
+
+  // =====================================================================
+  // THEMES — a wide catalog of presets across several style categories,
+  // plus a fully custom "advanced" theme built from user-picked colours.
+  // Applying a theme just overwrites the CSS custom properties on :root,
+  // since every colour in the UI is already driven from those variables.
+  // =====================================================================
+  const DEFAULT_VARS = {
+    bg:'#0a0c0a', panel:'#12160f', panel2:'#171c14', line:'#2a3324',
+    phosphor:'#8fff8a', phosphorDim:'#3d7a3a', amber:'#ffb454', amberDim:'#8a6428',
+    red:'#ff6b5e', text:'#d9e6d3', textDim:'#7b8a73',
+  };
+
+  const THEMES = {
+    'Pastel': [
+      {id:'pastel-mint',   name:'Pastel Mint',    vars:{bg:'#f4f9f4',panel:'#ffffff',panel2:'#eaf5ea',line:'#d3e6d3',phosphor:'#4caf7d',phosphorDim:'#8fcaa9',amber:'#e0a45c',amberDim:'#eecb9c',red:'#d97b72',text:'#2c3b32',textDim:'#7c8c81'}},
+      {id:'pastel-lavender',name:'Pastel Lavender',vars:{bg:'#f6f4fb',panel:'#ffffff',panel2:'#ede8f7',line:'#dcd3ee',phosphor:'#8a6fd6',phosphorDim:'#c1b0ea',amber:'#e0a45c',amberDim:'#eecb9c',red:'#d9728f',text:'#332e42',textDim:'#8480a0'}},
+      {id:'pastel-peach',  name:'Pastel Peach',   vars:{bg:'#fdf6f1',panel:'#ffffff',panel2:'#fbe9dd',line:'#f0d5c0',phosphor:'#e08a5b',phosphorDim:'#f0bd9c',amber:'#e6b23c',amberDim:'#f2d488',red:'#d9615a',text:'#3c2c24',textDim:'#9c8474'}},
+      {id:'pastel-sky',    name:'Pastel Sky',     vars:{bg:'#f2f8fb',panel:'#ffffff',panel2:'#e2f1f7',line:'#cbe4ee',phosphor:'#4a9cc2',phosphorDim:'#9ccbe0',amber:'#e0a45c',amberDim:'#eecb9c',red:'#d9727a',text:'#233841',textDim:'#79939e'}},
+      {id:'pastel-rose',   name:'Pastel Rose',    vars:{bg:'#fbf3f5',panel:'#ffffff',panel2:'#f6e3e8',line:'#eecdd6',phosphor:'#d1698f',phosphorDim:'#e8a8c0',amber:'#e0a45c',amberDim:'#eecb9c',red:'#c85a5a',text:'#402530',textDim:'#977a86'}},
+    ],
+    'Vibrant': [
+      {id:'vibrant-neon',    name:'Neon Green (default)', vars:DEFAULT_VARS},
+      {id:'vibrant-sunset',  name:'Sunset',      vars:{bg:'#170a12',panel:'#231020',panel2:'#2c1428',line:'#4a1f3f',phosphor:'#ff5f8f',phosphorDim:'#8a2f4c',amber:'#ffb454',amberDim:'#8a6428',red:'#ff4d4d',text:'#ffe3ec',textDim:'#a3708a'}},
+      {id:'vibrant-cyberpunk',name:'Cyberpunk',  vars:{bg:'#08060f',panel:'#120e22',panel2:'#181330',line:'#3a2d63',phosphor:'#00f0ff',phosphorDim:'#0d6d75',amber:'#ff2fd0',amberDim:'#8a1a70',red:'#ff3860',text:'#e7e7ff',textDim:'#7d78b0'}},
+      {id:'vibrant-coral',   name:'Coral',       vars:{bg:'#12100c',panel:'#1c1812',panel2:'#241e15',line:'#4a3a24',phosphor:'#ff7a5c',phosphorDim:'#8a4433',amber:'#ffd166',amberDim:'#8a7038',red:'#ff3d3d',text:'#fdece3',textDim:'#a3897a'}},
+      {id:'vibrant-electric',name:'Electric Blue',vars:{bg:'#050912',panel:'#0c1526',panel2:'#101c33',line:'#20406e',phosphor:'#4dc0ff',phosphorDim:'#22557e',amber:'#ffcf56',amberDim:'#8a7128',red:'#ff5e5e',text:'#dcecff',textDim:'#7391b3'}},
+    ],
+    'High Contrast': [
+      {id:'hc-bw',     name:'Black / White', vars:{bg:'#000000',panel:'#0d0d0d',panel2:'#161616',line:'#565656',phosphor:'#ffffff',phosphorDim:'#8c8c8c',amber:'#ffffff',amberDim:'#8c8c8c',red:'#ff3030',text:'#ffffff',textDim:'#b8b8b8'}},
+      {id:'hc-yellow', name:'Black / Yellow', vars:{bg:'#000000',panel:'#0d0d0d',panel2:'#161200',line:'#5c5000',phosphor:'#ffe000',phosphorDim:'#8a7900',amber:'#ffe000',amberDim:'#8a7900',red:'#ff3b3b',text:'#ffe000',textDim:'#b3a000'}},
+      {id:'hc-green',  name:'Black / Green', vars:{bg:'#000000',panel:'#0a0d0a',panel2:'#0f1c0f',line:'#1f6b1f',phosphor:'#00ff3c',phosphorDim:'#0a8a24',amber:'#00ff3c',amberDim:'#0a8a24',red:'#ff3030',text:'#c9ffcf',textDim:'#4fb35f'}},
+    ],
+    'Monotone': [
+      {id:'mono-dark',  name:'Grayscale Dark',  vars:{bg:'#101010',panel:'#181818',panel2:'#1f1f1f',line:'#383838',phosphor:'#e6e6e6',phosphorDim:'#7a7a7a',amber:'#bdbdbd',amberDim:'#666666',red:'#ababab',text:'#e6e6e6',textDim:'#8f8f8f'}},
+      {id:'mono-light', name:'Grayscale Light', vars:{bg:'#f2f2f2',panel:'#ffffff',panel2:'#e6e6e6',line:'#cfcfcf',phosphor:'#2b2b2b',phosphorDim:'#888888',amber:'#4d4d4d',amberDim:'#a3a3a3',red:'#666666',text:'#1c1c1c',textDim:'#767676'}},
+      {id:'mono-sepia', name:'Sepia',           vars:{bg:'#efe6d8',panel:'#f7f0e4',panel2:'#e8dcc6',line:'#cdbb9a',phosphor:'#5c4526',phosphorDim:'#8f7852',amber:'#7a5a2e',amberDim:'#a68b5f',red:'#8a4a3a',text:'#3a2c18',textDim:'#8a7a5c'}},
+      {id:'mono-blue',  name:'Blue Monotone',   vars:{bg:'#0c1218',panel:'#121b23',panel2:'#17222c',line:'#2c4256',phosphor:'#a9d4ea',phosphorDim:'#4d7590',amber:'#a9d4ea',amberDim:'#4d7590',red:'#e0a0a0',text:'#dcedf5',textDim:'#7396ac'}},
+    ],
+    'Simple': [
+      {id:'simple-light', name:'Simple Light', vars:{bg:'#fafafa',panel:'#ffffff',panel2:'#f0f0f0',line:'#dddddd',phosphor:'#1a7f4b',phosphorDim:'#6cae8c',amber:'#c47a1f',amberDim:'#dba867',red:'#c0392b',text:'#222222',textDim:'#757575'}},
+      {id:'simple-dark',  name:'Simple Dark',  vars:{bg:'#161616',panel:'#1e1e1e',panel2:'#262626',line:'#3a3a3a',phosphor:'#5fd98d',phosphorDim:'#357349',amber:'#e0b04a',amberDim:'#7d6027',red:'#e05c5c',text:'#e8e8e8',textDim:'#909090'}},
+      {id:'simple-slate', name:'Simple Slate',  vars:{bg:'#20242b',panel:'#282d36',panel2:'#313742',line:'#454c58',phosphor:'#7fb3d5',phosphorDim:'#436079',amber:'#e0c068',amberDim:'#7d6c38',red:'#e07f7f',text:'#e6e9ee',textDim:'#8891a0'}},
+      {id:'simple-paper', name:'Paper',         vars:{bg:'#efece4',panel:'#f8f6f0',panel2:'#e4e0d4',line:'#cac4b2',phosphor:'#3a5a40',phosphorDim:'#7f9884',amber:'#9c6b2e',amberDim:'#c0996a',red:'#a13d3d',text:'#242018',textDim:'#7c7666'}},
+    ],
+  };
+
+  function shade(hex, pct){
+    // pct negative darkens toward black, positive lightens toward white
+    const n = hex.replace('#','');
+    const r = parseInt(n.substring(0,2),16), g = parseInt(n.substring(2,4),16), b = parseInt(n.substring(4,6),16);
+    const t = pct<0 ? 0 : 255, p = Math.abs(pct);
+    const mix = c => Math.round((t-c)*p + c);
+    return '#' + [mix(r),mix(g),mix(b)].map(v=>v.toString(16).padStart(2,'0')).join('');
+  }
+
+  function applyThemeVars(vars){
+    const root = document.documentElement.style;
+    root.setProperty('--bg', vars.bg);
+    root.setProperty('--panel', vars.panel);
+    root.setProperty('--panel-2', vars.panel2);
+    root.setProperty('--line', vars.line);
+    root.setProperty('--phosphor', vars.phosphor);
+    root.setProperty('--phosphor-dim', vars.phosphorDim);
+    root.setProperty('--amber', vars.amber);
+    root.setProperty('--amber-dim', vars.amberDim);
+    root.setProperty('--red', vars.red);
+    root.setProperty('--text', vars.text);
+    root.setProperty('--text-dim', vars.textDim);
+  }
+
+  function findTheme(id){
+    for(const cat of Object.values(THEMES)){
+      const t = cat.find(t=>t.id===id);
+      if(t) return t;
+    }
+    return null;
+  }
+
+  function highlightActiveSwatch(id){
+    document.querySelectorAll('.theme-swatch').forEach(el=>{
+      el.classList.toggle('active', el.dataset.themeId === id);
+    });
+  }
+
+  function selectTheme(id, skipSave){
+    let vars;
+    if(id === 'custom'){
+      vars = S.customThemeVars || DEFAULT_VARS;
+    } else if(id === 'default'){
+      vars = DEFAULT_VARS;
+    } else {
+      const t = findTheme(id);
+      if(!t) return;
+      vars = t.vars;
+    }
+    applyThemeVars(vars);
+    S.activeThemeId = id;
+    highlightActiveSwatch(id);
+    if(!skipSave) saveSettings();
+  }
+
+  function renderThemeSwatches(){
+    const wrap = $('themeCategories');
+    wrap.innerHTML = '';
+    for(const [catName, list] of Object.entries(THEMES)){
+      const catDiv = document.createElement('div');
+      catDiv.className = 'theme-cat';
+      const label = document.createElement('div');
+      label.className = 'theme-cat-label';
+      label.textContent = catName;
+      catDiv.appendChild(label);
+      const row = document.createElement('div');
+      row.className = 'theme-swatch-row';
+      list.forEach(t=>{
+        const btn = document.createElement('button');
+        btn.className = 'theme-swatch';
+        btn.dataset.themeId = t.id;
+        btn.innerHTML = `<div class="chips">
+            <span class="chip" style="background:${t.vars.bg}"></span>
+            <span class="chip" style="background:${t.vars.panel}"></span>
+            <span class="chip" style="background:${t.vars.phosphor}"></span>
+            <span class="chip" style="background:${t.vars.amber}"></span>
+          </div><span class="name">${t.name}</span>`;
+        btn.addEventListener('click', ()=> selectTheme(t.id));
+        row.appendChild(btn);
+      });
+      catDiv.appendChild(row);
+      wrap.appendChild(catDiv);
+    }
+  }
+
+  function getCustomPickerVars(){
+    return {
+      bg:$('cBg').value, panel:$('cPanel').value, panel2:$('cPanel2').value, line:$('cLine').value,
+      phosphor:$('cAccent').value, phosphorDim:shade($('cAccent').value,-0.45),
+      amber:$('cAmber').value, amberDim:shade($('cAmber').value,-0.45),
+      red:$('cRed').value, text:$('cText').value, textDim:$('cTextDim').value,
+    };
+  }
+
+  function initCustomPickers(vars){
+    $('cBg').value = vars.bg; $('cPanel').value = vars.panel; $('cPanel2').value = vars.panel2;
+    $('cLine').value = vars.line; $('cAccent').value = vars.phosphor; $('cAmber').value = vars.amber;
+    $('cRed').value = vars.red; $('cText').value = vars.text; $('cTextDim').value = vars.textDim;
+  }
+
+  $('btnApplyCustom').addEventListener('click', ()=>{
+    S.customThemeVars = getCustomPickerVars();
+    selectTheme('custom');
+  });
+  $('btnResetTheme').addEventListener('click', ()=>{
+    initCustomPickers(DEFAULT_VARS);
+    selectTheme('default');
+  });
+
+  // =====================================================================
+  // SETTINGS PERSISTENCE — stored in the browser's localStorage on this
+  // device (a page opened over file:// or a plain static host can't set
+  // real HTTP cookies reliably, and localStorage covers the same "remember
+  // my settings next time" need). Only appearance/behaviour settings are
+  // saved — hardware connections always require a fresh permission grant.
+  // =====================================================================
+  const STORAGE_KEY = 'waterfall90-settings-v1';
+
+  function collectSettings(){
+    return {
+      themeId: S.activeThemeId || 'default',
+      customThemeVars: S.customThemeVars || null,
+      waterfall: S.waterfall,
+      drive: S.drive,
+      txTailMs: S.txTailMs,
+      pttMethod: $('pttMethod').value,
+      cm108Bit: $('cm108Bit').value,
+      catBaud: $('catBaud').value,
+      catFraming: $('catFraming').value,
+      civTo: $('civTo').value,
+      civFrom: $('civFrom').value,
+      monitorVolume: S.monitorVolume,
+      img: {
+        cols: $('imgCols').value, rows: $('imgRows').value, frame: $('imgFrame').value,
+        gamma: $('imgGamma').value,
+      },
+      tune: { freq: $('tuneFreq').value, timeout: $('tuneTimeout').value },
+    };
+  }
+
+  function saveSettings(){
+    try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(collectSettings())); }
+    catch(err){ console.warn('Could not save settings', err); }
+  }
+
+  function setRangeAndLabel(id, value){
+    const el = $(id);
+    if(!el) return;
+    el.value = value;
+    el.dispatchEvent(new Event('input', {bubbles:true}));
+  }
+
+  function loadSettings(){
+    let saved = null;
+    try{ saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null'); }
+    catch(err){ console.warn('Could not read saved settings', err); }
+    if(!saved) return;
+
+    if(saved.customThemeVars){ S.customThemeVars = saved.customThemeVars; initCustomPickers(saved.customThemeVars); }
+    if(saved.themeId) selectTheme(saved.themeId, true);
+
+    if(saved.waterfall){
+      Object.assign(S.waterfall, saved.waterfall);
+      setRangeAndLabel('wfGain', S.waterfall.gain);
+      $('wfMin').value = S.waterfall.min; $('wfMax').value = S.waterfall.max;
+      setRangeAndLabel('wfSpeed', S.waterfall.speed);
+      $('wfFft').value = S.waterfall.fft;
+      $('wfPalette').value = S.waterfall.palette;
+      updateFreqLabels();
+    }
+    if(typeof saved.drive === 'number') setRangeAndLabel('driveSlider', Math.round(saved.drive*100));
+    if(typeof saved.txTailMs === 'number') setRangeAndLabel('txTailSlider', saved.txTailMs);
+    if(saved.pttMethod){ $('pttMethod').value = saved.pttMethod; S.pttMethod = saved.pttMethod; }
+    if(saved.cm108Bit) $('cm108Bit').value = saved.cm108Bit;
+    if(saved.catBaud) $('catBaud').value = saved.catBaud;
+    if(saved.catFraming) $('catFraming').value = saved.catFraming;
+    if(saved.civTo) $('civTo').value = saved.civTo;
+    if(saved.civFrom) $('civFrom').value = saved.civFrom;
+    if(typeof saved.monitorVolume === 'number') setRangeAndLabel('monitorVolume', Math.round(saved.monitorVolume*100));
+    if(saved.img){
+      if(saved.img.rows) $('imgRows').value = saved.img.rows;
+      if(saved.img.cols) $('imgCols').value = saved.img.cols;
+      if(saved.img.frame) setRangeAndLabel('imgFrame', saved.img.frame);
+      if(saved.img.gamma) setRangeAndLabel('imgGamma', saved.img.gamma);
+    }
+    if(saved.tune){
+      if(saved.tune.freq) setRangeAndLabel('tuneFreq', saved.tune.freq);
+      if(saved.tune.timeout) setRangeAndLabel('tuneTimeout', saved.tune.timeout);
+    }
+  }
+
+  // Auto-save on any settings-relevant change (cheap — just JSON to localStorage).
+  ['wfGain','wfMin','wfMax','wfSpeed','wfFft','wfPalette','driveSlider','txTailSlider',
+   'pttMethod','cm108Bit','catBaud','catFraming','civTo','civFrom','monitorVolume',
+   'imgCols','imgRows','imgFrame','imgGamma','tuneFreq','tuneTimeout'].forEach(id=>{
+    const el = $(id);
+    if(el) el.addEventListener('change', saveSettings);
+  });
+
+  renderThemeSwatches();
+  initCustomPickers(DEFAULT_VARS);
+  selectTheme('default', true);
+  loadSettings();
 
   updateFreqLabels();
   updateVfoDisplay();
