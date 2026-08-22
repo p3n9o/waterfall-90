@@ -147,6 +147,9 @@
   .hint{font-size:11px;color:var(--text-dim);line-height:1.5;margin-top:8px;}
   .hint.warn{color:var(--amber);}
 
+  .atu-status-row{display:flex;justify-content:space-between;align-items:center;font-family:var(--mono);font-size:10px;color:var(--text-dim);margin-top:8px;text-transform:uppercase;letter-spacing:.05em;}
+  .atu-status-row span#atuStatus{color:var(--phosphor);text-transform:none;letter-spacing:0;}
+
   /* waterfall */
   .scope-wrap{background:var(--panel);border:1px solid var(--line);border-radius:6px;overflow:hidden;}
   .scope-head{
@@ -236,6 +239,16 @@
         <div class="freq-input">
           <button id="btnReadFreq" style="flex:1;">↻ Read frequency from rig</button>
         </div>
+      </div>
+
+      <div class="panel">
+        <h3>Antenna tuner (G90 built‑in ATU)</h3>
+        <button class="btn" id="btnAtuToggle">Tuner: bypassed (tap to switch in‑line)</button>
+        <div style="height:8px"></div>
+        <button class="btn btn-tune" id="btnAtuTune">⚡ Start ATU tune cycle</button>
+        <div class="atu-status-row"><span>Status</span><span id="atuStatus">idle</span></div>
+        <div class="hint">Sends the rig's real CI‑V antenna‑tuner commands (the same ones FLRIG/Hamlib use for this rig family) — <b>1C 01 01</b> switches the tuner in‑line, <b>1C 01 02</b> starts a real tuning cycle. The G90 keys itself internally and returns to RX on its own; this app just sends the command and watches the CI‑V TX‑status flag to know when it's done.</div>
+        <div class="hint warn">This is different from "Test tuning" below, which just plays a tone through this app — this button drives the actual hardware tuner relay and briefly transmits. Confirm low power and a connected antenna/dummy load first, and check your licence conditions.</div>
       </div>
 
       <div class="panel">
@@ -377,7 +390,8 @@
         <option value="3">GPIO 3 (0x04)</option>
         <option value="4">GPIO 4 (0x08)</option>
       </select>
-      <div class="hint">The G90 speaks Icom CI-V (it CATs as an IC‑7100/IC‑756PRO clone), hex addresses shown without the "0x" — default rig address <b>70</b>, controller <b>E0</b>, 19200 baud. The DE‑19's 4‑pin "PA" port is a TX/BAND/ALC keying <i>output</i> for an amplifier, not a computer‑to‑radio PTT input. If CI‑V PTT doesn't key the rig, your interface may instead expect a hardware RTS or DTR toggle — try those options above. RTS/DTR are always forced low the instant CAT connects, specifically so opening the port itself can't accidentally key the transmitter.</div>
+      <div class="hint">The G90 speaks Icom CI-V (it CATs as an IC‑7100/IC‑756PRO clone), hex addresses shown without the "0x" — commonly <b>70</b> on older firmware, controller <b>E0</b>, 19200 baud. <b>Some units/firmware report as A4 instead</b> (this shows up in Hamlib logs for the G90) — the address is also user-changeable in the rig's own CI‑V menu, so if "Read frequency" comes back empty, try A4 here or check the rig's menu before assuming CAT itself is broken.</div>
+      <div class="hint">The G90's 4‑pin "PA" port is a TX/BAND/ALC keying <i>output</i> for an amplifier, not a computer‑to‑radio PTT input. If CI‑V PTT ever doesn't key the rig, your interface may instead expect a hardware RTS or DTR toggle — try those options above. RTS/DTR are always forced low the instant CAT connects, specifically so opening the port itself can't accidentally key the transmitter.</div>
       <div class="hint warn">Xiegu's own CAT guide notes that leaving a polling CAT program connected and then power-cycling the G90 can be misread as the firmware‑update key combo — disconnect CAT software when you're done.</div>
     </div>
 
@@ -457,6 +471,7 @@
     tuning:false, tuneTimer:null, tuneOsc:null, tuneGain:null,
     renderedBuffer:null,
     frequencyHz:14074000,
+    atuOn:false, atuTuning:false,
   };
 
   const $ = id => document.getElementById(id);
@@ -621,6 +636,83 @@
     setFrequency(Math.round(mhz*1e6));
   });
   $('btnReadFreq').addEventListener('click', readFrequency);
+
+  // =====================================================================
+  // ANTENNA TUNER (real G90 built-in ATU) — Icom CI-V command 0x1C 0x01,
+  // shared across the IC-7100/7200/7300/756PRO CI-V family that the G90's
+  // CAT protocol is modelled on, and the same command FLRIG/Hamlib send
+  // for "tuner on/off/start" on this rig family:
+  //   1C 01 00  — tuner OFF (bypassed)
+  //   1C 01 01  — tuner ON (switched in-line)
+  //   1C 01 02  — TUNE START (rig keys itself briefly and tunes)
+  // This is a real, published Icom CI-V command, but Xiegu's own firmware
+  // isn't guaranteed to implement every sub-command identically — test at
+  // low power into a dummy load or known-good antenna before relying on it
+  // in the field.
+  // =====================================================================
+  async function setAtuTuner(on){
+    if(!S.catWriter){ alert('Connect CAT first.'); return; }
+    await catSend(civFrame([0x1C,0x01], [on ? 0x01 : 0x00]));
+    S.atuOn = on;
+    $('btnAtuToggle').classList.toggle('connected', on);
+    $('btnAtuToggle').textContent = on ? 'Tuner: IN-LINE (tap to bypass)' : 'Tuner: bypassed (tap to switch in-line)';
+    $('atuStatus').textContent = on ? 'in-line' : 'bypassed';
+  }
+
+  async function pollCivTxStatus(){
+    // Reading 0x1C 0x00 with no data returns the rig's current TX on/off
+    // flag — used here purely to detect when a tune cycle has finished and
+    // the rig has dropped back to RX on its own, since the ATU keys itself
+    // without this app driving PTT.
+    await catSend(civFrame([0x1C,0x00], []));
+    const resp = await catReadResponse(500);
+    if(!resp) return null;
+    for(let i=0;i<resp.length-2;i++){
+      if(resp[i]===0x1C && resp[i+1]===0x00){ return resp[i+2]; }
+    }
+    return null;
+  }
+
+  async function startAtuTune(){
+    if(!S.catWriter){ alert('Connect CAT first.'); return; }
+    if(S.atuTuning) return;
+    S.atuTuning = true;
+    const btn = $('btnAtuTune');
+    btn.disabled = true;
+    btn.classList.add('active');
+    btn.textContent = '⏳ Tuning…';
+    $('atuStatus').textContent = 'tuning…';
+    try{
+      await catSend(civFrame([0x1C,0x01], [0x02]));
+      // Give the rig a moment to actually key up before polling, then watch
+      // the CI-V TX flag until it drops back to RX (tuning complete) or a
+      // generous cap elapses — real ATU cycles on the G90 typically run a
+      // few seconds.
+      await new Promise(r=>setTimeout(r,700));
+      const deadline = Date.now() + 15000;
+      let sawTx = false, finished = false;
+      while(Date.now() < deadline){
+        const state = await pollCivTxStatus();
+        if(state === 1) sawTx = true;
+        if(state === 0 && sawTx){ finished = true; break; }
+        await new Promise(r=>setTimeout(r,500));
+      }
+      $('atuStatus').textContent = finished
+        ? 'tune cycle complete — check SWR/antenna icon on the rig'
+        : (sawTx ? 'still tuning past the watchdog window — check the rig' : 'command sent — no TX status confirmed, check the rig display');
+    }catch(err){
+      console.error('ATU tune failed', err);
+      $('atuStatus').textContent = 'error — see console';
+    }finally{
+      S.atuTuning = false;
+      btn.disabled = false;
+      btn.classList.remove('active');
+      btn.textContent = '⚡ Start ATU tune cycle';
+    }
+  }
+
+  $('btnAtuToggle').addEventListener('click', ()=> setAtuTuner(!S.atuOn));
+  $('btnAtuTune').addEventListener('click', startAtuTune);
 
   // =====================================================================
   // PTT via WebHID (CM108-style GPIO, common on USB sound-card interfaces)
