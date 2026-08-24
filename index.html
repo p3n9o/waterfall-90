@@ -831,7 +831,8 @@
     port:null, catWriter:null, catReader:null, catFraming:'8n1',
     hid:null, cm108Bit:2,
     audioCtx:null, analyser:null, micSource:null, micStream:null,
-    outEl:null, outDest:null, // for routed output via setSinkId
+    outEl:null, outDest:null, // legacy MediaStream bridge — only used as a fallback when AudioContext.setSinkId() isn't supported
+    radioOut:null, radioOutUsesCtxSink:false, // shared "over the air" bus every TX path connects to
     monitorGain:null, monitorDest:null, monitorEl:null, monitorOn:false, monitorVolume:0.6, // RX audio listen-through
     previewDest:null, previewEl:null, // shared local-playback routing for Preview buttons & Numbers Station monitor
     waterfall:{ gain:1.0, min:300, max:2700, speed:3, fft:2048, palette:'phosphor', running:false },
@@ -1266,6 +1267,16 @@
       S.outDest = S.audioCtx.createMediaStreamDestination();
       S.outEl.srcObject = S.outDest.stream;
 
+      // Every TX path (tune, CW, voice, image, numbers-station) connects to
+      // this one bus rather than to S.outDest directly. Where the device
+      // routing lands (native context destination vs. the legacy MediaStream
+      // bridge) is decided in applyOutputSink() below — see the comment
+      // there for why this indirection exists.
+      if(!S.radioOut) S.radioOut = S.audioCtx.createGain();
+      try{ S.radioOut.disconnect(); }catch(e){}
+      S.radioOut.connect(S.audioCtx.destination);
+      S.radioOutUsesCtxSink = true;
+
       S.monitorGain = S.audioCtx.createGain();
       S.monitorGain.gain.value = S.monitorOn ? S.monitorVolume : 0;
       S.micSource.connect(S.monitorGain);
@@ -1311,11 +1322,50 @@
   }
 
   async function applyOutputSink(){
-    if(!S.outEl || !S.outEl.setSinkId) { setDot('dotAudioOut','warn'); return; }
     const id = $('audioOutSelect').value;
-    if(!id) return;
+    if(!id || !S.radioOut) { setDot('dotAudioOut','warn'); return; }
+
+    // Preferred path: point the AudioContext itself at the chosen device, so
+    // TX audio (tune carrier, CW, voice, image, numbers-station) is rendered
+    // straight to the hardware on the audio thread's own clock.
+    //
+    // The old approach routed everything through a MediaStreamDestination
+    // into a plain <audio> element and used THAT element's setSinkId. That
+    // extra hop is a live "real-time" playback sink with its own jitter
+    // buffer — if its clock drifts even slightly from the AudioContext's
+    // clock (very common across two different physical/USB devices, e.g.
+    // DE‑19 vs. the system default), the browser periodically resyncs by
+    // dropping/duplicating a render quantum. On short or complex audio it's
+    // inaudible; on a sustained pure tone (constant carrier, or CW past the
+    // point the drift has accumulated) it's heard as a sudden pitch step —
+    // which only ever shows up on that routed device, never on the local
+    // monitor/preview (different <audio> elements, usually the default
+    // device, so no drift to correct). Rendering directly via
+    // AudioContext.setSinkId() removes that extra hop entirely.
+    if(typeof S.audioCtx.setSinkId === 'function'){
+      try{
+        await S.audioCtx.setSinkId(id);
+        if(!S.radioOutUsesCtxSink){
+          try{ S.radioOut.disconnect(); }catch(e){}
+          S.radioOut.connect(S.audioCtx.destination);
+          S.radioOutUsesCtxSink = true;
+        }
+        setDot('dotAudioOut','on');
+        return;
+      }catch(err){
+        console.warn('AudioContext.setSinkId failed, falling back to MediaStream routing', err);
+      }
+    }
+
+    // Fallback for browsers without AudioContext.setSinkId (e.g. Firefox,
+    // Safari) — same MediaStream/<audio> bridge as before, so device
+    // selection still works there even though it can carry this glitch.
+    if(!S.outEl || !S.outEl.setSinkId) { setDot('dotAudioOut','warn'); return; }
     try{
       await S.outEl.setSinkId(id);
+      try{ S.radioOut.disconnect(); }catch(e){}
+      S.radioOut.connect(S.outDest);
+      S.radioOutUsesCtxSink = false;
       setDot('dotAudioOut','on');
     }catch(err){
       console.warn('setSinkId failed', err);
@@ -1444,7 +1494,7 @@
     S.voiceTxActive = true;
     await enablePTT();
     S.voiceGain.gain.value = S.voiceDrive;
-    try{ S.voiceGain.connect(S.outDest); }catch(e){}
+    try{ S.voiceGain.connect(S.radioOut); }catch(e){}
     $('btnVoicePtt').classList.add('connected');
   }
 
@@ -1453,7 +1503,7 @@
     S.voiceTxActive = false;
     if(S.voiceGain){
       S.voiceGain.gain.value = 0;
-      try{ S.voiceGain.disconnect(S.outDest); }catch(e){}
+      try{ S.voiceGain.disconnect(S.radioOut); }catch(e){}
     }
     $('btnVoicePtt').classList.remove('connected');
     await disablePTT();
@@ -1839,7 +1889,7 @@
     ns.radioGain = S.audioCtx.createGain();
     ns.radioGain.gain.value = ns.drive;
     ns.analyser.connect(ns.radioGain);
-    ns.radioGain.connect(S.outDest);
+    ns.radioGain.connect(S.radioOut);
     ns.analyserConnectedToRadio = true;
   }
   function nsStartSpectro(){
@@ -2067,7 +2117,7 @@
     const gain = S.audioCtx.createGain();
     gain.gain.value = af.gain;
     src.connect(gain);
-    if(af.txToRadio && S.outDest) gain.connect(S.outDest);
+    if(af.txToRadio && S.outDest) gain.connect(S.radioOut);
     else gain.connect(ensurePreviewRouting());
     af.currentSource = src;
     af.currentGain = gain;
@@ -2551,7 +2601,7 @@
     gain.gain.value = toRadio ? S.imgDrive : 0.7;
     src.connect(gain);
     if(toRadio && S.outDest){
-      gain.connect(S.outDest);
+      gain.connect(S.radioOut);
     } else {
       gain.connect(ensurePreviewRouting());
     }
@@ -2779,7 +2829,7 @@
     const gain = S.audioCtx.createGain();
     gain.gain.value = toRadio ? S.cw.drive : 0.7;
     src.connect(gain);
-    if(toRadio && S.outDest) gain.connect(S.outDest);
+    if(toRadio && S.outDest) gain.connect(S.radioOut);
     else gain.connect(ensurePreviewRouting());
     S.cw.currentSource = src;
     src.onended = ()=>{ if(S.cw.currentSource === src) S.cw.currentSource = null; };
@@ -3050,7 +3100,7 @@
     S.tuneGain = S.audioCtx.createGain();
     S.tuneGain.gain.value = S.drive;
     S.tuneOsc.connect(S.tuneGain);
-    if(S.outDest) S.tuneGain.connect(S.outDest); else S.tuneGain.connect(S.audioCtx.destination);
+    if(S.outDest) S.tuneGain.connect(S.radioOut); else S.tuneGain.connect(S.audioCtx.destination);
     S.tuneOsc.start();
 
     S.tuneTimer = setTimeout(stopTune, timeoutSec*1000);
