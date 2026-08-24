@@ -198,6 +198,27 @@
   .scope-foot{display:flex;gap:8px;padding:8px 12px;border-top:1px solid var(--line);flex-wrap:wrap;}
   .scope-foot .btn{width:auto;flex:1;min-width:140px;justify-content:center;}
 
+  /* spectrum line graph, sits above the waterfall like a classic SDR panadapter */
+  #spectrumCanvas{display:block;width:100%;height:clamp(70px,14vh,130px);background:#04050a;border-bottom:1px solid var(--line);}
+  .zoom-row{display:flex;align-items:center;gap:4px;}
+  .zoom-btn{
+    font-family:var(--mono);font-size:13px;font-weight:700;line-height:1;color:var(--text-dim);
+    background:var(--panel-2);border:1px solid var(--line);border-radius:4px;width:26px;height:26px;
+    display:flex;align-items:center;justify-content:center;cursor:pointer;transition:border-color .15s,color .15s;
+  }
+  .zoom-btn:hover{border-color:var(--phosphor-dim);color:var(--phosphor);}
+  .span-readout{font-family:var(--mono);font-size:10px;color:var(--text-dim);padding:0 4px;white-space:nowrap;}
+
+  /* collapsible top-level panels — click a non-".sub" h3 to fold the panel body away */
+  .panel > h3:not(.sub){cursor:pointer;user-select:none;}
+  .panel > h3:not(.sub)::before{
+    content:"▾";display:inline-block;font-size:9px;color:var(--text-dim);
+    transition:transform .15s;transform-origin:50% 45%;margin-right:1px;
+  }
+  .panel.collapsed > h3:not(.sub)::before{transform:rotate(-90deg);}
+  .panel.collapsed > *{display:none !important;}
+  .panel.collapsed > h3:not(.sub){display:flex !important;}
+
   .drop-zone{
     border:1.5px dashed var(--line);border-radius:6px;padding:20px 14px;text-align:center;
     font-family:var(--mono);font-size:11px;color:var(--text-dim);cursor:pointer;transition:border-color .15s,color .15s;
@@ -269,6 +290,12 @@
     <span class="sub">Xiegu G90 · DE‑19 waterfall console</span>
   </div>
   <div class="status-strip">
+    <div class="status-chip" id="clockChip" style="gap:8px;"><span id="clockUtc">--:--:--</span><span style="color:var(--line);">·</span><span id="clockLocal" style="color:var(--text-dim);">--:--:-- LOCAL</span></div>
+    <div class="status-chip" id="rxLevelChip" style="min-width:120px;gap:8px;" title="Peak audio level in the current waterfall passband — not a calibrated RF S-meter.">
+      <span>RX</span>
+      <div class="meter" style="width:60px;margin:0;flex:none;"><div class="fill" id="rxLevelMeter" style="width:0%;"></div></div>
+      <span id="rxLevelPct" style="color:var(--text-dim);">—</span>
+    </div>
     <div class="status-chip"><span class="dot" id="dotCat"></span>CAT</div>
     <div class="status-chip"><span class="dot" id="dotHid"></span>PTT (HID)</div>
     <div class="status-chip"><span class="dot" id="dotAudioIn"></span>AUDIO IN</div>
@@ -382,11 +409,17 @@
     <div>
       <div class="scope-wrap">
         <div class="scope-head">
-          <h3 style="margin:0;">Waterfall — receive<span id="scopeTxBadge" style="display:none;color:var(--red);font-family:var(--mono);font-size:10px;letter-spacing:.08em;margin-left:10px;">● TRANSMITTING</span></h3>
-          <div class="btn-row" style="width:auto;">
-            <button class="btn" id="btnStartWaterfall" style="width:auto;">▶ Start</button>
+          <h3 style="margin:0;">Spectrum &amp; waterfall — receive<span id="scopeTxBadge" style="display:none;color:var(--red);font-family:var(--mono);font-size:10px;letter-spacing:.08em;margin-left:10px;">● TRANSMITTING</span></h3>
+          <div class="zoom-row">
+            <button class="zoom-btn" id="btnZoomOut" title="Widen passband">－</button>
+            <span class="span-readout" id="wfSpanReadout">2400 Hz span</span>
+            <button class="zoom-btn" id="btnZoomIn" title="Narrow passband">＋</button>
+            <div class="btn-row" style="width:auto;margin-left:8px;">
+              <button class="btn" id="btnStartWaterfall" style="width:auto;">▶ Start</button>
+            </div>
           </div>
         </div>
+        <canvas id="spectrumCanvas"></canvas>
         <canvas id="waterfall"></canvas>
         <div class="scope-freqs"><span id="wfMinLabel">300 Hz</span><span id="wfCenterLabel"></span><span id="wfMaxLabel">2700 Hz</span></div>
         <div class="rx-audio-row">
@@ -2401,6 +2434,50 @@
   window.addEventListener('resize', resizeCanvas);
   resizeCanvas();
 
+  // =====================================================================
+  // SPECTRUM LINE GRAPH — a classic panadapter strip above the waterfall,
+  // sharing the exact same frequency axis (S.waterfall.min..max) and the
+  // same analyser data as the waterfall below it, so the two always agree.
+  // =====================================================================
+  const specCanvas = $('spectrumCanvas');
+  const sctx2 = specCanvas.getContext('2d');
+  function resizeSpecCanvas(){
+    const rect = specCanvas.getBoundingClientRect();
+    specCanvas.width = Math.max(1, Math.round(rect.width*dpr));
+    specCanvas.height = Math.max(1, Math.round(rect.height*dpr));
+  }
+  window.addEventListener('resize', resizeSpecCanvas);
+  resizeSpecCanvas();
+
+  function drawSpectrum(freqDataArr, minBin, span, binHz){
+    const w = specCanvas.width, h = specCanvas.height;
+    sctx2.fillStyle = '#04050a';
+    sctx2.fillRect(0,0,w,h);
+
+    // horizontal grid lines (25/50/75%)
+    sctx2.strokeStyle = 'rgba(255,255,255,0.06)';
+    sctx2.lineWidth = 1;
+    [0.25,0.5,0.75].forEach(f=>{
+      const y = Math.round(h*f)+0.5;
+      sctx2.beginPath(); sctx2.moveTo(0,y); sctx2.lineTo(w,y); sctx2.stroke();
+    });
+
+    const accent = getComputedStyle(document.documentElement).getPropertyValue('--phosphor').trim() || '#8fff8a';
+    sctx2.beginPath();
+    for(let x=0;x<w;x++){
+      const bin = minBin + Math.floor((x/w)*span);
+      const v = Math.min(1, (freqDataArr[bin]||0)/255 * S.waterfall.gain);
+      const y = h - v*h;
+      if(x===0) sctx2.moveTo(x,y); else sctx2.lineTo(x,y);
+    }
+    sctx2.strokeStyle = accent;
+    sctx2.lineWidth = Math.max(1, dpr);
+    sctx2.stroke();
+    sctx2.lineTo(w,h); sctx2.lineTo(0,h); sctx2.closePath();
+    sctx2.fillStyle = accent.startsWith('#') ? accent+'22' : 'rgba(143,255,138,0.13)';
+    try{ sctx2.fill(); }catch(e){}
+  }
+
   function palette(t, name){
     t = Math.min(1,Math.max(0,t));
     switch(name){
@@ -2439,6 +2516,9 @@
     const minBin = Math.floor(S.waterfall.min / binHz);
     const maxBin = Math.min(freqData.length-1, Math.ceil(S.waterfall.max / binHz));
     const span = Math.max(1, maxBin-minBin);
+
+    drawSpectrum(freqData, minBin, span, binHz);
+    updateRxLevelMeter(freqData, minBin, maxBin);
 
     const rowCanvas = document.createElement('canvas');
     rowCanvas.width = span; rowCanvas.height = 1;
@@ -2519,7 +2599,67 @@
     $('wfMinLabel').textContent = S.waterfall.min+' Hz';
     $('wfMaxLabel').textContent = S.waterfall.max+' Hz';
     $('wfCenterLabel').textContent = Math.round((S.waterfall.min+S.waterfall.max)/2)+' Hz';
+    $('wfSpanReadout').textContent = Math.round(S.waterfall.max-S.waterfall.min)+' Hz span';
+    $('wfMin').value = S.waterfall.min;
+    $('wfMax').value = S.waterfall.max;
   }
+
+  // =====================================================================
+  // ZOOM IN/OUT — narrows or widens the passband shown by the spectrum +
+  // waterfall, keeping the same centre frequency. Just adjusts the same
+  // S.waterfall.min/max the Settings tab's numeric fields already drive.
+  // =====================================================================
+  function zoomSpectrum(factor){
+    const center = (S.waterfall.min + S.waterfall.max)/2;
+    let halfSpan = (S.waterfall.max - S.waterfall.min)/2 * factor;
+    halfSpan = Math.max(75, Math.min(10000, halfSpan));
+    S.waterfall.min = Math.max(0, Math.round(center - halfSpan));
+    S.waterfall.max = Math.round(center + halfSpan);
+    updateFreqLabels();
+  }
+  $('btnZoomIn').addEventListener('click', ()=> zoomSpectrum(0.7));
+  $('btnZoomOut').addEventListener('click', ()=> zoomSpectrum(1/0.7));
+
+  // =====================================================================
+  // RX LEVEL METER — the top-bar "RX" chip. Reads the peak bin magnitude
+  // within the current passband from the SAME analyser feeding the
+  // spectrum/waterfall, so it always reflects what's actually on screen.
+  // This rides on the browser's audio analyser (post floor/ceiling dB
+  // window), not a calibrated RF front end, so it's a relative reading —
+  // not a real S-meter — and is labelled accordingly in its tooltip.
+  // =====================================================================
+  function updateRxLevelMeter(freqDataArr, minBin, maxBin){
+    let peak = 0;
+    for(let b=minBin; b<=maxBin; b++){ if(freqDataArr[b] > peak) peak = freqDataArr[b]; }
+    const pct = Math.round((peak/255)*100);
+    $('rxLevelMeter').style.width = pct+'%';
+    $('rxLevelPct').textContent = pct+'%';
+  }
+
+  // =====================================================================
+  // CLOCK — UTC + local time in the top status strip.
+  // =====================================================================
+  function tickClock(){
+    const now = new Date();
+    const pad = n => String(n).padStart(2,'0');
+    $('clockUtc').textContent = `${pad(now.getUTCHours())}:${pad(now.getUTCMinutes())}:${pad(now.getUTCSeconds())} UTC`;
+    $('clockLocal').textContent = `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())} LOCAL`;
+  }
+  tickClock();
+  setInterval(tickClock, 1000);
+
+  // =====================================================================
+  // COLLAPSIBLE PANELS — click a panel's main heading (not a ".sub"
+  // sub-heading) to fold its body away, mirroring the collapsible side
+  // panels in dedicated SDR consoles. Pure CSS toggle (see .panel.collapsed
+  // rules) driven by one delegated click handler, so it works for every
+  // current and future .panel without extra wiring per-panel.
+  // =====================================================================
+  document.addEventListener('click', e=>{
+    const h = e.target.closest('.panel > h3:not(.sub)');
+    if(!h) return;
+    h.closest('.panel').classList.toggle('collapsed');
+  });
 
   let loadedImage = null;
 
