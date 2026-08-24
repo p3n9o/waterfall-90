@@ -970,6 +970,10 @@
       decodeState:null, decodeStateStart:0, symbolBuffer:'', decodedText:'',
       currentSource:null, // tracks the in-flight CW buffer source so a re-trigger can't overlap it
     },
+    rtty:{
+      drive:0.2, renderedBuffer:null,
+      currentSource:null, // tracks the in-flight RTTY buffer source so a re-trigger can't overlap it
+    },
   };
 
   const $ = id => document.getElementById(id);
@@ -3144,6 +3148,245 @@
   bindRange('cwSquelch', v=>{ $('cwSquelchVal').textContent = Math.round(v)+'%'; });
 
   // =====================================================================
+  // RTTY (Baudot/ITA2) — text-to-RTTY transmit
+  //
+  //  - 5-bit Baudot/ITA2 code, one code per printable/control character.
+  //    Two codes (27 and 31 below) aren't characters at all — they're the
+  //    FIGS and LTRS shift codes that tell the far end "everything from
+  //    here is figures/punctuation" or "...back to letters". Table below
+  //    lists, for every 5-bit value 0–31, the Letters-shift character (l)
+  //    and the Figures-shift character (f) it represents.
+  //  - SPACE, CR and LF share the same code in both shifts, so sending them
+  //    never requires (or changes) a shift.
+  //  - Encoder tracks current shift state and only emits a FIGS/LTRS code
+  //    when the next character actually needs a different shift than the
+  //    one currently active — exactly like a real RTTY terminal unit.
+  //  - Unshift-on-space (USOS): when enabled, a SPACE also resets the
+  //    encoder's internal shift state back to LTRS (matching compliant
+  //    receiving equipment, which auto-unshifts on space), so a following
+  //    letter doesn't need a redundant explicit LTRS code. With USOS off,
+  //    the shift state carries through spaces unchanged.
+  //  - Unsupported characters (anything with no Baudot code, in either
+  //    shift) are skipped and listed in the preview line rather than
+  //    silently mangling the rest of the message.
+  // =====================================================================
+  const BAUDOT_TABLE = [
+    {l:'\0', f:'\0'},  // 00000 blank
+    {l:'E',  f:'3'},   // 00001
+    {l:'\n', f:'\n'},  // 00010 LF
+    {l:'A',  f:'-'},   // 00011
+    {l:' ',  f:' '},   // 00100
+    {l:'S',  f:'\x07'},// 00101 BELL
+    {l:'I',  f:'8'},   // 00110
+    {l:'U',  f:'7'},   // 00111
+    {l:'\r', f:'\r'},  // 01000 CR
+    {l:'D',  f:'$'},   // 01001
+    {l:'R',  f:'4'},   // 01010
+    {l:'J',  f:"'"},   // 01011
+    {l:'N',  f:','},   // 01100
+    {l:'F',  f:'!'},   // 01101
+    {l:'C',  f:':'},   // 01110
+    {l:'K',  f:'('},   // 01111
+    {l:'T',  f:'5'},   // 10000
+    {l:'Z',  f:'"'},   // 10001
+    {l:'L',  f:')'},   // 10010
+    {l:'W',  f:'2'},   // 10011
+    {l:'H',  f:'#'},   // 10100
+    {l:'Y',  f:'6'},   // 10101
+    {l:'P',  f:'0'},   // 10110
+    {l:'Q',  f:'1'},   // 10111
+    {l:'O',  f:'9'},   // 11000
+    {l:'B',  f:'?'},   // 11001
+    {l:'G',  f:'&'},   // 11010
+    {l:null, f:null},  // 11011 FIGS shift
+    {l:'M',  f:'.'},   // 11100
+    {l:'X',  f:'/'},   // 11101
+    {l:'V',  f:';'},   // 11110
+    {l:null, f:null},  // 11111 LTRS shift
+  ];
+  const RTTY_FIGS_CODE = 27, RTTY_LTRS_CODE = 31;
+  const RTTY_LTRS_TO_CODE = {}, RTTY_FIGS_TO_CODE = {};
+  BAUDOT_TABLE.forEach((row, idx)=>{
+    if(row.l) RTTY_LTRS_TO_CODE[row.l] = idx;
+    if(row.f) RTTY_FIGS_TO_CODE[row.f] = idx;
+  });
+
+  // Splits raw message text into the ordered list of 5-bit codes that will
+  // actually be transmitted (including any inserted shift codes), plus a
+  // human-readable preview string and a list of characters that had no
+  // Baudot representation and were skipped.
+  function tokenizeRttyText(text, usos){
+    const codes = [];
+    const previewChars = [];
+    const unsupported = [];
+    let shift = 'LTRS'; // real RTTY terminals power up / idle in LTRS
+    const normalized = text.replace(/\r\n|\r|\n/g, '\n');
+
+    for(const rawCh of normalized){
+      if(rawCh === '\n'){
+        codes.push(8, 2); // CR then LF — common convention for line endings
+        previewChars.push('⏎');
+        if(usos) shift = 'LTRS';
+        continue;
+      }
+      if(rawCh === ' '){
+        codes.push(4); // shared LTRS/FIGS code — never needs a shift
+        previewChars.push(' ');
+        if(usos) shift = 'LTRS';
+        continue;
+      }
+      const ch = rawCh.toUpperCase();
+      const inLtrs = RTTY_LTRS_TO_CODE.hasOwnProperty(ch);
+      const inFigs = RTTY_FIGS_TO_CODE.hasOwnProperty(ch) && !inLtrs;
+      if(!inLtrs && !inFigs){ unsupported.push(rawCh); continue; }
+      const needShift = inLtrs ? 'LTRS' : 'FIGS';
+      if(needShift !== shift){
+        codes.push(needShift === 'FIGS' ? RTTY_FIGS_CODE : RTTY_LTRS_CODE);
+        shift = needShift;
+      }
+      codes.push(needShift === 'FIGS' ? RTTY_FIGS_TO_CODE[ch] : RTTY_LTRS_TO_CODE[ch]);
+      previewChars.push(ch);
+    }
+    return {codes, preview:previewChars.join(''), unsupported};
+  }
+
+  function updateRttySpaceLabel(){
+    const mark = parseFloat($('rttyMark').value);
+    const shift = parseFloat($('rttyShift').value);
+    const reverse = $('rttyReverse').checked;
+    const space = reverse ? mark + shift : mark - shift;
+    $('rttySpaceVal').textContent = Math.round(space)+' Hz';
+  }
+
+  function renderRttyBuffer(){
+    if(!S.audioCtx) S.audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+    const text = $('rttyMessage').value;
+    if(!text.trim()){ $('rttyPreview').textContent = 'type a message first'; return; }
+
+    const baud = parseFloat($('rttyBaud').value);
+    const stopBits = parseFloat($('rttyStopBits').value);
+    const markHz = parseFloat($('rttyMark').value);
+    const shiftHz = parseFloat($('rttyShift').value);
+    const reverse = $('rttyReverse').checked;
+    const usos = $('rttyUsos').checked;
+    const repeats = Math.max(1, Math.min(99, parseInt($('rttyRepeats').value,10)||1));
+    const sr = S.audioCtx.sampleRate;
+    const spaceHz = Math.max(20, reverse ? markHz + shiftHz : markHz - shiftHz);
+
+    const {codes, preview, unsupported} = tokenizeRttyText(text, usos);
+    if(!codes.length){ $('rttyPreview').textContent = 'no supported characters found'; return; }
+
+    const Tbit = 1000/baud; // ms per data bit at this baud rate
+
+    // Each 5-bit code becomes: 1 start bit (space) + 5 data bits (mark/space
+    // per bit, MSB first) + stop bit(s) (mark, held for stopBits units).
+    // The line is continuously carrying a tone (mark or space) — it's
+    // never silent — so segments butt directly against each other with no
+    // gaps, which combined with unbroken phase accumulation below is what
+    // makes this continuous-phase FSK rather than simple on/off keying.
+    function symbolSchedule(code){
+      const bits = [(code>>4)&1, (code>>3)&1, (code>>2)&1, (code>>1)&1, code&1];
+      const seq = [{freq:spaceHz, duration:Tbit}]; // start bit
+      bits.forEach(b=> seq.push({freq: b ? markHz : spaceHz, duration:Tbit}));
+      seq.push({freq:markHz, duration:Tbit*stopBits}); // stop bit(s)
+      return seq;
+    }
+
+    let full = [];
+    for(let r=0;r<repeats;r++){
+      codes.forEach(code=> full.push(...symbolSchedule(code)));
+      if(r < repeats-1) full.push({freq:markHz, duration:Tbit*4}); // idle mark between repeats
+    }
+    // Short mark-tone lead-in/tail so PTT and any decoder have something
+    // to lock onto before/after the actual data.
+    full = [{freq:markHz, duration:200}, ...full, {freq:markHz, duration:100}];
+
+    const totalMs = full.reduce((s,seg)=>s+seg.duration,0);
+    const totalSamples = Math.max(1, Math.round(totalMs/1000*sr));
+    const buffer = S.audioCtx.createBuffer(1, totalSamples, sr);
+    const data = buffer.getChannelData(0);
+    let phase = 0; // never reset between segments — continuous phase FSK
+    let offset = 0;
+    full.forEach(seg=>{
+      const segSamples = Math.max(1, Math.round(seg.duration/1000*sr));
+      const phaseInc = 2*Math.PI*seg.freq/sr;
+      for(let i=0;i<segSamples && offset+i<totalSamples;i++){
+        data[offset+i] = Math.sin(phase);
+        phase += phaseInc;
+      }
+      offset += segSamples;
+    });
+
+    S.rtty.renderedBuffer = buffer;
+    const unsupportedNote = unsupported.length
+      ? `  —  unsupported (skipped): ${[...new Set(unsupported)].join(' ')}` : '';
+    $('rttyPreview').textContent = preview + `  —  ${(totalMs/1000).toFixed(1)}s @ ${baud} baud`+unsupportedNote;
+    $('btnRttyPreview').disabled = false;
+    $('btnRttyTx').disabled = false;
+  }
+
+  // Stops any RTTY tone currently sounding — mirrors cwForceStop(), so a
+  // re-trigger (or a panic/clear-cache/pagehide) can never leave two
+  // overlapping RTTY carriers running.
+  function rttyForceStop(){
+    if(S.rtty.currentSource){
+      try{ S.rtty.currentSource.onended = null; S.rtty.currentSource.stop(); }catch(e){}
+      try{ S.rtty.currentSource.disconnect(); }catch(e){}
+      S.rtty.currentSource = null;
+    }
+  }
+
+  function playRttyBuffer(toRadio){
+    if(!S.rtty.renderedBuffer) return;
+    rttyForceStop();
+    const src = S.audioCtx.createBufferSource();
+    src.buffer = S.rtty.renderedBuffer;
+    const gain = S.audioCtx.createGain();
+    gain.gain.value = toRadio ? S.rtty.drive : 0.7;
+    src.connect(gain);
+    if(toRadio && S.outDest) gain.connect(S.radioOut);
+    else gain.connect(ensurePreviewRouting());
+    S.rtty.currentSource = src;
+    src.onended = ()=>{ if(S.rtty.currentSource === src) S.rtty.currentSource = null; };
+    src.start();
+    return src;
+  }
+
+  $('rttyMessage').addEventListener('input', ()=>{
+    $('btnRttyRender').disabled = !$('rttyMessage').value.trim();
+  });
+  $('btnRttyRender').addEventListener('click', renderRttyBuffer);
+  $('btnRttyPreview').addEventListener('click', ()=> playRttyBuffer(false));
+
+  $('btnRttyTx').addEventListener('click', async ()=>{
+    if(!S.rtty.renderedBuffer) return;
+    await enablePTT(S.rtty.renderedBuffer.duration*1000 + S.txTailMs + 3000);
+    try{
+      const src = playRttyBuffer(true);
+      src.onended = ()=>{
+        if(S.rtty.currentSource === src) S.rtty.currentSource = null;
+        setTimeout(()=> disablePTT(), S.txTailMs);
+      };
+      const expectedMs = S.rtty.renderedBuffer.duration*1000 + S.txTailMs + 1500;
+      setTimeout(()=>{ if($('vfoRxTx').textContent==='TX') disablePTT(); }, expectedMs);
+    }catch(err){
+      console.error('RTTY transmit failed to start', err);
+      disablePTT();
+    }
+  });
+
+  bindRange('rttyMark', v=>{ $('rttyMarkVal').textContent = Math.round(v)+' Hz'; updateRttySpaceLabel(); });
+  bindRange('rttyShift', v=>{ $('rttyShiftVal').textContent = Math.round(v)+' Hz'; updateRttySpaceLabel(); });
+  $('rttyReverse').addEventListener('change', updateRttySpaceLabel);
+  document.querySelectorAll('#txSubRTTY .btn-row .btn[data-shift]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      $('rttyShift').value = btn.dataset.shift;
+      $('rttyShift').dispatchEvent(new Event('input', {bubbles:true}));
+    });
+  });
+  bindRange('rttyDriveSlider', v=>{ S.rtty.drive = v/100; $('rttyDriveVal').textContent = Math.round(v)+'%'; });
+
+  // =====================================================================
   // PTT unified control
   // =====================================================================
   let pttSafetyTimer = null;
@@ -3210,6 +3453,7 @@
   async function stopAllTx(){
     stopTune();
     cwForceStop();
+    rttyForceStop();
     imgForceStop(); // also clears the waterfall TX-preview overlay
     await stopVoiceTx();
     nsForceStop();
