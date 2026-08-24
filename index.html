@@ -346,6 +346,8 @@
         <h3 class="sub">PTT &amp; drive</h3>
         <button class="btn btn-primary" id="btnPtt">PTT — hold to transmit</button>
         <button class="btn" id="btnPanicRelease" style="margin-top:8px;border-color:var(--red);color:var(--red);justify-content:center;">⏹ Force PTT release</button>
+        <button class="btn" id="btnClearTxCache" style="margin-top:8px;border-color:var(--amber-dim);color:var(--amber);justify-content:center;">🗑 Clear TX cache</button>
+        <div class="hint">If you minimise or switch away from this tab mid‑transmission it's now stopped automatically. Use this if a transmission ever seems to carry over or overlap with the next one.</div>
         <label class="field">Mic / drive gain <span class="range-val" id="driveVal">20%</span></label>
         <input type="range" id="driveSlider" min="0" max="200" value="20">
         <div class="meter"><div class="fill" id="txMeter"></div></div>
@@ -837,6 +839,7 @@
     pttMethod:'cat',
     tuning:false, tuneTimer:null, tuneOsc:null, tuneGain:null,
     renderedBuffer:null,
+    imgCurrentSource:null, // tracks the in-flight image TX/preview buffer source so it can be stopped before another one starts
     frequencyHz:14074000,
     atuOn:false, atuTuning:false,
     currentVfo:null,
@@ -859,6 +862,7 @@
     cw:{
       drive:0.2, renderedBuffer:null, listening:false,
       decodeState:null, decodeStateStart:0, symbolBuffer:'', decodedText:'',
+      currentSource:null, // tracks the in-flight CW buffer source so a re-trigger can't overlap it
     },
   };
 
@@ -2526,7 +2530,21 @@
     $('imgInfo').textContent = `Rendered: ${cols}×${rows}, ${(totalSamples/sr).toFixed(1)}s @ ${sr}Hz`;
   }
 
+  // Stops any image buffer (preview or TX) that's currently playing. Called
+  // before starting a new one, and from the tab-hidden/blur/panic handlers,
+  // so a transmission that was orphaned when the tab lost focus can never
+  // keep sounding underneath a freshly-started one.
+  function imgForceStop(){
+    if(S.imgCurrentSource){
+      try{ S.imgCurrentSource.onended = null; S.imgCurrentSource.stop(); }catch(e){}
+      try{ S.imgCurrentSource.disconnect(); }catch(e){}
+      S.imgCurrentSource = null;
+    }
+    stopTxPreview();
+  }
+
   function playBuffer(buffer, toRadio){
+    imgForceStop(); // never let a previous image buffer keep playing under a new one
     const src = S.audioCtx.createBufferSource();
     src.buffer = buffer;
     const gain = S.audioCtx.createGain();
@@ -2537,6 +2555,8 @@
     } else {
       gain.connect(ensurePreviewRouting());
     }
+    S.imgCurrentSource = src;
+    src.onended = ()=>{ if(S.imgCurrentSource === src) S.imgCurrentSource = null; };
     src.start();
     return src;
   }
@@ -2550,7 +2570,10 @@
     startTxPreview(S.lastMatrix, S.lastMatrixRows, S.lastMatrixCols, S.renderedBuffer.duration*1000);
     try{
       const src = playBuffer(S.renderedBuffer, true);
-      src.onended = ()=> { setTimeout(()=>{ disablePTT(); stopTxPreview(); }, S.txTailMs); };
+      src.onended = ()=> {
+        if(S.imgCurrentSource === src) S.imgCurrentSource = null;
+        setTimeout(()=>{ disablePTT(); stopTxPreview(); }, S.txTailMs);
+      };
       const expectedMs = (S.renderedBuffer.duration*1000) + S.txTailMs + 1500;
       setTimeout(()=>{
         if($('vfoRxTx').textContent==='TX') disablePTT();
@@ -2736,8 +2759,21 @@
     $('btnCwTx').disabled = false;
   }
 
+  // Stops any CW tone currently sounding. Called before a new CW playback
+  // starts (so re-pressing TX can never sound two tones/carriers at once)
+  // and from the tab-hidden/blur/panic handlers, so a keyed tone that was
+  // orphaned when the tab lost focus can't keep running under a new one.
+  function cwForceStop(){
+    if(S.cw.currentSource){
+      try{ S.cw.currentSource.onended = null; S.cw.currentSource.stop(); }catch(e){}
+      try{ S.cw.currentSource.disconnect(); }catch(e){}
+      S.cw.currentSource = null;
+    }
+  }
+
   function playCwBuffer(toRadio){
     if(!S.cw.renderedBuffer) return;
+    cwForceStop(); // guarantee only ever one CW tone in flight — a single carrier, never overlapping copies
     const src = S.audioCtx.createBufferSource();
     src.buffer = S.cw.renderedBuffer;
     const gain = S.audioCtx.createGain();
@@ -2745,6 +2781,8 @@
     src.connect(gain);
     if(toRadio && S.outDest) gain.connect(S.outDest);
     else gain.connect(ensurePreviewRouting());
+    S.cw.currentSource = src;
+    src.onended = ()=>{ if(S.cw.currentSource === src) S.cw.currentSource = null; };
     src.start();
     return src;
   }
@@ -2765,7 +2803,10 @@
     await enablePTT(S.cw.renderedBuffer.duration*1000 + S.txTailMs + 3000);
     try{
       const src = playCwBuffer(true);
-      src.onended = ()=>{ setTimeout(()=> disablePTT(), S.txTailMs); };
+      src.onended = ()=>{
+        if(S.cw.currentSource === src) S.cw.currentSource = null;
+        setTimeout(()=> disablePTT(), S.txTailMs);
+      };
       const expectedMs = S.cw.renderedBuffer.duration*1000 + S.txTailMs + 1500;
       setTimeout(()=>{ if($('vfoRxTx').textContent==='TX') disablePTT(); }, expectedMs);
     }catch(err){
@@ -2936,21 +2977,19 @@
   pttBtn.addEventListener('touchstart', e=>{e.preventDefault(); enablePTT();});
   ['mouseup','mouseleave','touchend','touchcancel'].forEach(evt=> pttBtn.addEventListener(evt, disablePTT));
 
-  window.addEventListener('mouseup', ()=>{ disablePTT(); stopVoiceTx(); });
-  window.addEventListener('touchend', ()=>{ disablePTT(); stopVoiceTx(); });
-  window.addEventListener('blur', ()=>{ disablePTT(); stopVoiceTx(); nsForceStop(); afForceStop(); });
-  document.addEventListener('visibilitychange', ()=>{ if(document.hidden){ disablePTT(); stopVoiceTx(); nsForceStop(); afForceStop(); } });
-
-  // Force PTT release — always visible in the PTT & drive panel (not just
-  // while a transmission is in progress), so it's there as an immediate
-  // manual override any time something needs to be shut down. It's wired
-  // to a single 'click' listener only — hovering, focusing, or dragging
-  // across the button does nothing; it takes an actual click to disengage.
-  // disablePTT()/the stop calls below are all safe to call even when
-  // nothing is currently transmitting.
-  $('btnPanicRelease').addEventListener('click', async ()=>{
+  // Unified "stop every transmit path" routine. This is what closes the
+  // overlap/distortion bug: previously, losing focus (blur/tab hidden) only
+  // disengaged PTT — it never actually stopped the CW tone or image-mode
+  // buffer that was still playing, so those kept sounding in the background.
+  // Coming back and pressing TX again started a second buffer on top of the
+  // still-running first one, and the two overlapped into distortion (and,
+  // for CW specifically, two simultaneous tones instead of one clean
+  // carrier-like tone). Every TX source is now tracked and explicitly
+  // stopped here, so nothing can ever be left running unattended.
+  async function stopAllTx(){
     stopTune();
-    stopTxPreview();
+    cwForceStop();
+    imgForceStop(); // also clears the waterfall TX-preview overlay
     await stopVoiceTx();
     nsForceStop();
     afForceStop();
@@ -2958,6 +2997,35 @@
     try{ if(S.port) await S.port.setSignals({dataTerminalReady:false, requestToSend:false}); }catch(e){}
     try{ if(S.hid) await hidPTT(false); }catch(e){}
     try{ if(S.catWriter) await catPTT(false); }catch(e){}
+  }
+
+  window.addEventListener('mouseup', ()=>{ disablePTT(); stopVoiceTx(); });
+  window.addEventListener('touchend', ()=>{ disablePTT(); stopVoiceTx(); });
+  // Tab losing focus, being minimised, or switched away from — stop
+  // everything, not just PTT, so nothing keeps transmitting unattended.
+  window.addEventListener('blur', stopAllTx);
+  document.addEventListener('visibilitychange', ()=>{ if(document.hidden) stopAllTx(); });
+  window.addEventListener('pagehide', stopAllTx);
+
+  // Force PTT release — always visible in the PTT & drive panel (not just
+  // while a transmission is in progress), so it's there as an immediate
+  // manual override any time something needs to be shut down. It's wired
+  // to a single 'click' listener only — hovering, focusing, or dragging
+  // across the button does nothing; it takes an actual click to disengage.
+  // stopAllTx() is safe to call even when nothing is currently transmitting.
+  $('btnPanicRelease').addEventListener('click', stopAllTx);
+
+  // Clear TX cache — manual fallback in case any buffered transmission
+  // (CW, image, recorded audio file, numbers-station audio) is ever left
+  // hanging around after a re-focus. Clears every TX buffer/source and
+  // releases PTT, guaranteeing the next transmission starts clean with no
+  // overlap. Same underlying stop-everything routine as Force PTT release.
+  $('btnClearTxCache').addEventListener('click', async ()=>{
+    const btn = $('btnClearTxCache');
+    await stopAllTx();
+    const original = btn.textContent;
+    btn.textContent = '✓ TX cache cleared';
+    setTimeout(()=>{ btn.textContent = original; }, 1400);
   });
 
   // =====================================================================
