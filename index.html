@@ -801,7 +801,7 @@
               <button class="btn" data-shift="425">425 Hz</button>
               <button class="btn" data-shift="850">850 Hz</button>
             </div>
-            <div class="hint">Space tone <span id="rttySpaceVal">1955 Hz</span> — computed from Mark tone and Shift (Space = Mark − Shift, or Mark + Shift with Reverse ticked below). Keep both tones inside the waterfall passband set in <b>Settings → Waterfall display</b>.</div>
+            <div class="hint">Space tone <span id="rttySpaceVal">2295 Hz</span> — computed from Mark tone and Shift (Space = Mark + Shift, or Mark − Shift with Reverse ticked below — standard ham RTTY polarity, e.g. the classic 2125/2295 Hz pair). Keep both tones inside the waterfall passband set in <b>Settings → Waterfall display</b>.</div>
 
             <label class="field" style="display:flex;align-items:center;justify-content:space-between;margin-top:14px;">
               <span>Reverse (swap mark/space sense)</span>
@@ -842,7 +842,7 @@
             <input type="range" id="rttyDecodeMark" min="300" max="2700" step="5" value="2125">
             <label class="field">Shift <span class="range-val" id="rttyDecodeShiftVal">170 Hz</span></label>
             <input type="range" id="rttyDecodeShift" min="23" max="1000" step="1" value="170">
-            <div class="hint">Space tone <span id="rttyDecodeSpaceVal">1955 Hz</span> — computed from the two settings above.</div>
+            <div class="hint">Space tone <span id="rttyDecodeSpaceVal">2295 Hz</span> — computed from the two settings above.</div>
             <label class="field" style="display:flex;align-items:center;justify-content:space-between;margin-top:10px;">
               <span>Reverse (swap mark/space sense)</span>
               <input type="checkbox" id="rttyDecodeReverse" style="width:auto;accent-color:var(--phosphor);">
@@ -3452,7 +3452,14 @@
     const mark = parseFloat($('rttyMark').value);
     const shift = parseFloat($('rttyShift').value);
     const reverse = $('rttyReverse').checked;
-    const space = reverse ? mark + shift : mark - shift;
+    // Standard ham RTTY polarity: Mark is the LOWER tone, Space is the
+    // HIGHER tone (Space = Mark + Shift) when not reversed — e.g. the
+    // classic 2125/2295 Hz pair at 170 Hz shift. This was backwards
+    // (Space = Mark − Shift by default), which silently swaps every mark/
+    // space bit relative to what a standards-compliant decoder expects —
+    // equivalent to inverting every data bit, which garbles all text even
+    // once the bit ORDER (see symbolSchedule) is correct.
+    const space = reverse ? mark - shift : mark + shift;
     $('rttySpaceVal').textContent = Math.round(space)+' Hz';
   }
 
@@ -3469,7 +3476,10 @@
     const usos = $('rttyUsos').checked;
     const repeats = Math.max(1, Math.min(99, parseInt($('rttyRepeats').value,10)||1));
     const sr = S.audioCtx.sampleRate;
-    const spaceHz = Math.max(20, reverse ? markHz + shiftHz : markHz - shiftHz);
+    // See updateRttySpaceLabel() above — Space is the higher tone
+    // (Mark + Shift) in normal/non-reversed polarity, matching standard
+    // ham RTTY practice, not the lower tone.
+    const spaceHz = Math.max(20, reverse ? markHz - shiftHz : markHz + shiftHz);
 
     const {codes, preview, unsupported} = tokenizeRttyText(text, usos);
     if(!codes.length){ $('rttyPreview').textContent = 'no supported characters found'; return; }
@@ -3648,7 +3658,9 @@
     const markHz = parseFloat($('rttyDecodeMark').value);
     const shiftHz = parseFloat($('rttyDecodeShift').value);
     const reverse = $('rttyDecodeReverse').checked;
-    const spaceHz = Math.max(20, reverse ? markHz+shiftHz : markHz-shiftHz);
+    // Matches the corrected standard polarity used on transmit: Space is
+    // the higher tone (Mark + Shift) when not reversed.
+    const spaceHz = Math.max(20, reverse ? markHz-shiftHz : markHz+shiftHz);
     const baud = parseFloat($('rttyDecodeBaud').value);
     const Tbit = 1000/baud;
 
@@ -3729,7 +3741,7 @@
     const mark = parseFloat($('rttyDecodeMark').value);
     const shift = parseFloat($('rttyDecodeShift').value);
     const reverse = $('rttyDecodeReverse').checked;
-    const space = reverse ? mark + shift : mark - shift;
+    const space = reverse ? mark - shift : mark + shift;
     $('rttyDecodeSpaceVal').textContent = Math.round(space)+' Hz';
   }
   bindRange('rttyDecodeMark', v=>{ $('rttyDecodeMarkVal').textContent = Math.round(v)+' Hz'; updateRttyDecodeSpaceLabel(); });
