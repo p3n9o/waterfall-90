@@ -1310,14 +1310,39 @@
       const outs = devices.filter(d=>d.kind==='audiooutput');
       const inSel = $('audioInSelect'), outSel = $('audioOutSelect'), monSel = $('audioMonitorSelect');
       const previewSel = $('audioPreviewSelect'), nsSel = $('nsOutputSelect'), afSel = $('afOutputSelect');
+
+      // Remember what was picked before we rebuild the <select> options —
+      // rebuilding innerHTML always resets .value, so without this a
+      // refresh (which happens every time you connect audio, or change the
+      // input device) would silently snap the dropdown back to whatever
+      // matched the DE-19 auto-pick below, discarding any device the user
+      // had deliberately chosen.
+      const prevIn = inSel.value, prevOut = outSel.value;
+
       inSel.innerHTML = ins.map(d=>`<option value="${d.deviceId}">${d.label||'Input device'}</option>`).join('') || '<option value="">No inputs found</option>';
       const outOptionsHtml = outs.map(d=>`<option value="${d.deviceId}">${d.label||'Output device'}</option>`).join('') || '<option value="">No outputs found</option>';
       outSel.innerHTML = outOptionsHtml;
       monSel.innerHTML = outOptionsHtml;
       const previewOptionsHtml = '<option value="">System default</option>' + outOptionsHtml;
       [previewSel, nsSel, afSel].forEach(sel=>{ if(sel) sel.innerHTML = previewOptionsHtml; });
-      [...inSel.options].forEach(o=>{ if(/de-?19/i.test(o.textContent)) inSel.value=o.value; });
-      [...outSel.options].forEach(o=>{ if(/de-?19/i.test(o.textContent)) outSel.value=o.value; });
+
+      // Restore the previous choice if that device still exists; only fall
+      // back to auto-picking DE-19 when there was nothing chosen before
+      // (a genuinely first-time population), so a manual pick survives
+      // every later refresh instead of being clobbered by it.
+      const restore = (sel, prevValue) => {
+        if(prevValue && [...sel.options].some(o=>o.value===prevValue)){
+          sel.value = prevValue;
+          return true;
+        }
+        return false;
+      };
+      if(!restore(inSel, prevIn)){
+        [...inSel.options].forEach(o=>{ if(/de-?19/i.test(o.textContent)) inSel.value=o.value; });
+      }
+      if(!restore(outSel, prevOut)){
+        [...outSel.options].forEach(o=>{ if(/de-?19/i.test(o.textContent)) outSel.value=o.value; });
+      }
     }catch(err){ console.warn(err); }
   }
 
