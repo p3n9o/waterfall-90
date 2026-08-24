@@ -419,8 +419,70 @@
             <button class="btn btn-primary" id="btnPreviewImage" disabled>▶ Preview (speaker)</button>
             <button class="btn btn-tune" id="btnTxImage" disabled>2 · Transmit over air</button>
           </div>
-          <div class="hint">Renders as a picture in a receiving waterfall. Slower speed = sharper detail. Fine-tune in <b>Settings → Image encode</b>.</div>
+          <div class="hint">Renders as a picture in a receiving waterfall. Slower speed = sharper detail. More encode options below.</div>
           <div class="hint warn">Dense images read louder to the rig — if RX looks like a solid block, turn TX mic gain <i>down</i>, not up, and watch the G90's ALC stay near zero.</div>
+
+          <details class="panel" open style="margin-top:12px;padding:10px 12px 12px;">
+            <summary style="cursor:pointer;font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--text-dim);">Encode settings</summary>
+            <div style="height:8px"></div>
+            <div class="two-col">
+              <div>
+                <label class="field">Time columns</label>
+                <input class="textfield" type="number" id="imgCols" value="140" min="20" max="400">
+              </div>
+              <div>
+                <label class="field">Frequency rows</label>
+                <input class="textfield" type="number" id="imgRows" value="64" min="16" max="200">
+              </div>
+            </div>
+            <div class="hint">
+              <b>Time columns</b> — more = sharper time detail, longer transmission.<br>
+              <b>Frequency rows</b> — more = finer left-right detail, but each tone gets less passband.
+            </div>
+            <input type="range" id="imgFrame" min="0.03" max="0.3" step="0.01" value="0.09" style="display:none;">
+            <label class="field">Brightness curve (gamma) <span class="range-val" id="imgGammaVal">1.0</span></label>
+            <input type="range" id="imgGamma" min="0.4" max="2.5" step="0.1" value="1.0">
+
+            <div class="divider"></div>
+            <label class="field">Synthesis resolution (FFT size)</label>
+            <select id="imgFftSize">
+              <option value="512">512 (coarse rows, sharp columns)</option>
+              <option value="1024">1024</option>
+              <option value="2048" selected>2048 (balanced)</option>
+              <option value="4096">4096 (fine rows)</option>
+              <option value="8192">8192 (finest rows, softer columns)</option>
+            </select>
+            <div class="hint" id="imgFftHint">≈ Hz per bin — sets how many distinct rows can actually be resolved as separate tones.</div>
+
+            <label class="field" style="display:flex;align-items:center;justify-content:space-between;margin-top:14px;">
+              <span>Log-mapped brightness (recommended)</span>
+              <input type="checkbox" id="imgLogMap" checked style="width:auto;accent-color:var(--phosphor);">
+            </label>
+            <div class="hint">Real waterfalls display signal level on a dB (logarithmic) scale, not a linear one. With this on, pixel brightness is encoded so the received tones line up with that scale instead of every mid-tone looking almost as bright as white.</div>
+            <label class="field">Dynamic range <span class="range-val" id="imgDynRangeVal">40 dB</span></label>
+            <input type="range" id="imgDynRange" min="10" max="70" step="1" value="40">
+            <div class="hint">How many dB separate pure black from pure white. Should roughly match (Ceiling − Floor) in <b>Settings → Waterfall display</b> for accurate contrast on receive.</div>
+
+            <label class="field">Column sharpness <span class="range-val" id="imgColSharpVal">60%</span></label>
+            <input type="range" id="imgColSharp" min="0" max="100" step="5" value="60">
+            <div class="hint">Higher = tones switch more crisply between columns (sharper left-right detail, more clicky); lower = tones blend smoothly into the next column (softer, quieter transitions).</div>
+
+            <label class="field" style="display:flex;align-items:center;justify-content:space-between;margin-top:14px;">
+              <span>Invert (dark subject on light background)</span>
+              <input type="checkbox" id="imgInvert" style="width:auto;accent-color:var(--phosphor);">
+            </label>
+            <label class="field" style="display:flex;align-items:center;justify-content:space-between;margin-top:10px;">
+              <span>Flip horizontal (mirror left↔right)</span>
+              <input type="checkbox" id="imgFlipH" style="width:auto;accent-color:var(--phosphor);">
+            </label>
+            <label class="field" style="display:flex;align-items:center;justify-content:space-between;margin-top:10px;">
+              <span>Flip vertical (mirror top↔bottom)</span>
+              <input type="checkbox" id="imgFlipV" style="width:auto;accent-color:var(--phosphor);">
+            </label>
+            <div class="hint">Flips apply to the transmission only — the preview thumbnail stays as-loaded.</div>
+            <div class="hint">Bright pixels = "on" tones. Auto-ticked for light-background photos; override if it looks backwards.</div>
+            <div class="hint" id="imgDurationHint">Estimated transmit time: ~12.6 s</div>
+          </details>
         </div>
 
         <div class="subtab-view" id="txSubVoice">
@@ -688,6 +750,15 @@
         <option value="ice">Ice blue</option>
         <option value="classic">Classic (blue→red)</option>
       </select>
+
+      <div class="divider"></div>
+      <label class="field">Floor (dB) <span class="range-val" id="wfFloorDbVal">-100 dB</span></label>
+      <input type="range" id="wfFloorDb" min="-140" max="-40" step="1" value="-100">
+      <label class="field">Ceiling (dB) <span class="range-val" id="wfCeilingDbVal">-30 dB</span></label>
+      <input type="range" id="wfCeilingDb" min="-60" max="0" step="1" value="-30">
+      <label class="field">Trail / persistence <span class="range-val" id="wfPersistenceVal">0.15</span></label>
+      <input type="range" id="wfPersistence" min="0" max="0.9" step="0.05" value="0.15">
+      <div class="hint">Floor/ceiling set the dB window mapped to black→full brightness on the live waterfall — this is what the browser's spectrum analyser uses to turn signal level into colour. It defaults to a wide 70&nbsp;dB window; narrowing it (e.g. matching the <b>Dynamic range</b> setting under Radio → Transmit → Image / Text → Encode settings) makes transmitted images reproduce with correct contrast instead of washing out. Persistence smooths frame-to-frame flicker — higher trails more, lower shows faster detail.</div>
     </div>
 
     <div class="panel">
@@ -748,43 +819,6 @@
     </div>
 
     <div class="panel">
-      <h3>Image encode</h3>
-      <div class="two-col">
-        <div>
-          <label class="field">Time columns</label>
-          <input class="textfield" type="number" id="imgCols" value="140" min="20" max="400">
-        </div>
-        <div>
-          <label class="field">Frequency rows</label>
-          <input class="textfield" type="number" id="imgRows" value="64" min="16" max="200">
-        </div>
-      </div>
-      <div class="hint">
-        <b>Time columns</b> — more = sharper time detail, longer transmission.<br>
-        <b>Frequency rows</b> — more = finer left-right detail, but each tone gets less passband.
-      </div>
-      <label class="field">Seconds per column <span class="range-val" id="imgFrameVal">0.09 s</span></label>
-      <input type="range" id="imgFrame" min="0.03" max="0.3" step="0.01" value="0.09">
-      <label class="field">Brightness curve (gamma) <span class="range-val" id="imgGammaVal">1.0</span></label>
-      <input type="range" id="imgGamma" min="0.4" max="2.5" step="0.1" value="1.0">
-      <label class="field" style="display:flex;align-items:center;justify-content:space-between;margin-top:14px;">
-        <span>Invert (dark subject on light background)</span>
-        <input type="checkbox" id="imgInvert" style="width:auto;accent-color:var(--phosphor);">
-      </label>
-      <label class="field" style="display:flex;align-items:center;justify-content:space-between;margin-top:10px;">
-        <span>Flip horizontal (mirror left↔right)</span>
-        <input type="checkbox" id="imgFlipH" style="width:auto;accent-color:var(--phosphor);">
-      </label>
-      <label class="field" style="display:flex;align-items:center;justify-content:space-between;margin-top:10px;">
-        <span>Flip vertical (mirror top↔bottom)</span>
-        <input type="checkbox" id="imgFlipV" style="width:auto;accent-color:var(--phosphor);">
-      </label>
-      <div class="hint">Flips apply to the transmission only — the preview thumbnail stays as-loaded.</div>
-      <div class="hint">Bright pixels = "on" tones. Auto-ticked for light-background photos; override if it looks backwards.</div>
-      <div class="hint" id="imgDurationHint">Estimated transmit time: ~12.6 s</div>
-    </div>
-
-    <div class="panel">
       <h3>Test tuning</h3>
       <label class="field">Carrier tone frequency (Hz) <span class="range-val" id="tuneFreqVal">1500 Hz</span></label>
       <input type="range" id="tuneFreq" min="300" max="2700" step="10" value="1500">
@@ -835,7 +869,7 @@
     radioOut:null, radioOutUsesCtxSink:false, // shared "over the air" bus every TX path connects to
     monitorGain:null, monitorDest:null, monitorEl:null, monitorOn:false, monitorVolume:0.6, // RX audio listen-through
     previewDest:null, previewEl:null, // shared local-playback routing for Preview buttons & Numbers Station monitor
-    waterfall:{ gain:1.0, min:300, max:2700, speed:3, fft:2048, palette:'phosphor', running:false },
+    waterfall:{ gain:1.0, min:300, max:2700, speed:3, fft:2048, palette:'phosphor', running:false, floorDb:-100, ceilingDb:-30, persistence:0.15 },
     drive:0.2,
     pttMethod:'cat',
     tuning:false, tuneTimer:null, tuneOsc:null, tuneGain:null,
@@ -1256,7 +1290,9 @@
       S.micSource = S.audioCtx.createMediaStreamSource(S.micStream);
       S.analyser = S.audioCtx.createAnalyser();
       S.analyser.fftSize = S.waterfall.fft;
-      S.analyser.smoothingTimeConstant = 0.15;
+      S.analyser.minDecibels = S.waterfall.floorDb;
+      S.analyser.maxDecibels = S.waterfall.ceilingDb;
+      S.analyser.smoothingTimeConstant = S.waterfall.persistence;
       S.micSource.connect(S.analyser);
 
       if(!S.outEl){
@@ -2441,7 +2477,21 @@
     $('imgDurationHint').textContent = `Estimated transmit time: ~${(cols*frame).toFixed(1)} s`;
   }
 
-  function imageToMatrix(img, cols, rows, gamma, invert, flipH, flipV){
+  function updateImgResolutionHint(){
+    const el = $('imgFftHint');
+    if(!el) return;
+    const fftSize = parseInt($('imgFftSize').value,10) || 2048;
+    const sr = (S.audioCtx && S.audioCtx.sampleRate) || 48000;
+    const binHz = sr/fftSize;
+    const minF = S.waterfall.min, maxF = S.waterfall.max;
+    const maxRows = Math.max(1, Math.floor((maxF-minF)/binHz)+1);
+    const rows = parseInt($('imgRows').value,10) || 0;
+    const warn = rows > maxRows ? ` — current row count (${rows}) exceeds this; extra rows will blur together.` : '';
+    el.textContent = `≈${binHz.toFixed(1)} Hz/bin over ${minF}–${maxF} Hz — up to ~${maxRows} distinguishable rows.${warn}`;
+    el.classList.toggle('warn', rows > maxRows);
+  }
+
+  function imageToMatrix(img, cols, rows, gamma, invert, flipH, flipV, logMap, dynRangeDb){
     const off = document.createElement('canvas');
     off.width = rows; off.height = cols;
     const octx = off.getContext('2d');
@@ -2469,10 +2519,25 @@
         const idx = (c*rows+r)*4;
         let gray = (0.299*data[idx] + 0.587*data[idx+1] + 0.114*data[idx+2]) / 255;
         if(invert) gray = 1 - gray;
-        matrix[r][c] = Math.pow(gray, gamma);
+        const g = Math.pow(gray, gamma);
+        // Log-mapped mode encodes brightness as a target dB level (white = 0dB,
+        // black = -dynRangeDb dB) so it lines up with how a real spectrum
+        // display shows magnitude, instead of a linear amplitude that a dB
+        // scale would compress into "everything looks nearly white".
+        matrix[r][c] = logMap ? Math.pow(10, (-dynRangeDb*(1-g))/20) : g;
       }
     }
     return matrix;
+  }
+
+  // Reshapes the 0..1 progress through a column's dwell time. sharpness=0
+  // leaves it linear (soft blend into the next column, fewer clicks);
+  // sharpness=1 pushes most of the change right at the column boundary
+  // (crisper horizontal/time detail, more percussive).
+  function shapeCrossfade(x, sharpness){
+    if(sharpness <= 0) return x;
+    const k = 1 + sharpness*24;
+    return x < 0.5 ? 0.5*Math.pow(2*x, k) : 1 - 0.5*Math.pow(2*(1-x), k);
   }
 
   function fft(re, im, invert){
@@ -2517,12 +2582,15 @@
     const invert = $('imgInvert').checked;
     const flipH = $('imgFlipH').checked;
     const flipV = $('imgFlipV').checked;
+    const logMap = $('imgLogMap').checked;
+    const dynRangeDb = parseFloat($('imgDynRange').value);
+    const colSharp = parseFloat($('imgColSharp').value)/100;
     const minF = S.waterfall.min, maxF = S.waterfall.max;
     const sr = S.audioCtx.sampleRate;
 
-    const matrix = imageToMatrix(loadedImage, cols, rows, gamma, invert, flipH, flipV);
+    const matrix = imageToMatrix(loadedImage, cols, rows, gamma, invert, flipH, flipV, logMap, dynRangeDb);
 
-    const N = 2048;
+    const N = parseInt($('imgFftSize').value,10) || 2048;
     const hop = N/4;
     const hopsPerCol = Math.max(1, Math.round(frameSec*sr/hop));
     const totalHops = hopsPerCol*cols;
@@ -2538,18 +2606,21 @@
 
     $('txProgressTrack').style.display = 'block';
 
+    // Each bin's magnitude comes straight from its own pixel value — no
+    // per-column rescaling. A spectrum display reads each bin independently,
+    // so a column's brightness must not depend on how many other pixels
+    // happen to be lit in that same column (the old 1/sqrt(activeCount) term
+    // did exactly that, and is why busy columns looked dim while sparse ones
+    // spiked too bright — the actual cause of tones not resembling the image).
     const magByCol = [];
     for(let c=0;c<cols;c++){
-      let activeCount = 0;
-      for(let r=0;r<rows;r++){ if(matrix[r][c] >= 0.03) activeCount++; }
-      const colScale = activeCount > 0 ? 1/Math.sqrt(activeCount) : 0;
       const mag = new Float64Array(N/2+1);
       for(let bin=loBin; bin<=hiBin; bin++){
         const t = (bin-minBin)/(maxBin-minBin);
         const rPos = Math.min(rows-1, Math.max(0, t*(rows-1)));
         const r0 = Math.floor(rPos), r1 = Math.min(rows-1, r0+1);
         const frac = rPos-r0;
-        mag[bin] = (matrix[r0][c]*(1-frac) + matrix[r1][c]*frac) * colScale;
+        mag[bin] = matrix[r0][c]*(1-frac) + matrix[r1][c]*frac;
       }
       magByCol.push(mag);
     }
@@ -2558,7 +2629,7 @@
       const cf = hopIndex/hopsPerCol;
       const c0 = Math.min(cols-1, Math.floor(cf));
       const c1 = Math.min(cols-1, c0+1);
-      const tfrac = cf-c0;
+      const tfrac = shapeCrossfade(cf-c0, colSharp);
       const magA = magByCol[c0], magB = magByCol[c1];
 
       const re = new Float64Array(N), im = new Float64Array(N);
@@ -3148,8 +3219,8 @@
   function bindRange(id, cb){ $(id).addEventListener('input', e=>cb(parseFloat(e.target.value))); }
 
   bindRange('wfGain', v=>{ S.waterfall.gain=v; $('wfGainVal').textContent=v.toFixed(1)+'×'; });
-  $('wfMin').addEventListener('input', e=>{ S.waterfall.min=parseFloat(e.target.value)||0; updateFreqLabels(); });
-  $('wfMax').addEventListener('input', e=>{ S.waterfall.max=parseFloat(e.target.value)||3000; updateFreqLabels(); });
+  $('wfMin').addEventListener('input', e=>{ S.waterfall.min=parseFloat(e.target.value)||0; updateFreqLabels(); updateImgResolutionHint(); });
+  $('wfMax').addEventListener('input', e=>{ S.waterfall.max=parseFloat(e.target.value)||3000; updateFreqLabels(); updateImgResolutionHint(); });
   const speedNames = {1:'Slow',2:'Relaxed',3:'Normal',4:'Fast',5:'Fastest'};
   bindRange('wfSpeed', v=>{ S.waterfall.speed=v; $('wfSpeedVal').textContent=speedNames[v]; });
   $('wfFft').addEventListener('change', e=>{
@@ -3157,6 +3228,18 @@
     if(S.analyser) S.analyser.fftSize = S.waterfall.fft;
   });
   $('wfPalette').addEventListener('change', e=>{ S.waterfall.palette = e.target.value; });
+  bindRange('wfFloorDb', v=>{
+    S.waterfall.floorDb = v; $('wfFloorDbVal').textContent = Math.round(v)+' dB';
+    if(S.analyser) S.analyser.minDecibels = v;
+  });
+  bindRange('wfCeilingDb', v=>{
+    S.waterfall.ceilingDb = v; $('wfCeilingDbVal').textContent = Math.round(v)+' dB';
+    if(S.analyser) S.analyser.maxDecibels = v;
+  });
+  bindRange('wfPersistence', v=>{
+    S.waterfall.persistence = v; $('wfPersistenceVal').textContent = v.toFixed(2);
+    if(S.analyser) S.analyser.smoothingTimeConstant = v;
+  });
 
   $('pttMethod').addEventListener('change', e=>{ S.pttMethod = e.target.value; });
   $('cm108Bit').addEventListener('change', e=>{ S.cm108Bit = parseInt(e.target.value,10); });
@@ -3166,16 +3249,18 @@
   bindRange('txTailSlider', v=>{ S.txTailMs = Math.round(v); $('txTailVal').textContent = Math.round(v)+' ms'; });
 
   ['imgCols','imgFrame'].forEach(id=> $(id).addEventListener('input', updateDurationEstimate));
+  $('imgRows').addEventListener('input', updateImgResolutionHint);
+  $('imgFftSize').addEventListener('change', updateImgResolutionHint);
+  bindRange('imgDynRange', v=>{ $('imgDynRangeVal').textContent = Math.round(v)+' dB'; });
+  bindRange('imgColSharp', v=>{ $('imgColSharpVal').textContent = Math.round(v)+'%'; });
   const speedNamesTx = v => v<=0.05?'Fast':v<=0.09?'Normal':v<=0.15?'Relaxed':'Slow';
   bindRange('imgFrame', v=>{
-    $('imgFrameVal').textContent = v.toFixed(2)+' s';
     $('txSpeedSlider').value = v;
     $('txSpeedVal').textContent = `${speedNamesTx(v)} — ${v.toFixed(2)}s/column`;
     updateDurationEstimate();
   });
   bindRange('txSpeedSlider', v=>{
     $('imgFrame').value = v;
-    $('imgFrameVal').textContent = v.toFixed(2)+' s';
     $('txSpeedVal').textContent = `${speedNamesTx(v)} — ${v.toFixed(2)}s/column`;
     updateDurationEstimate();
   });
@@ -3368,7 +3453,9 @@
       monitorVolume: S.monitorVolume,
       img: {
         cols: $('imgCols').value, rows: $('imgRows').value, frame: $('imgFrame').value,
-        gamma: $('imgGamma').value,
+        gamma: $('imgGamma').value, fftSize: $('imgFftSize').value,
+        logMap: $('imgLogMap').checked, dynRange: $('imgDynRange').value,
+        colSharp: $('imgColSharp').value,
       },
       tune: { freq: $('tuneFreq').value, timeout: $('tuneTimeout').value },
     };
@@ -3402,6 +3489,9 @@
       setRangeAndLabel('wfSpeed', S.waterfall.speed);
       $('wfFft').value = S.waterfall.fft;
       $('wfPalette').value = S.waterfall.palette;
+      if(typeof S.waterfall.floorDb === 'number') setRangeAndLabel('wfFloorDb', S.waterfall.floorDb);
+      if(typeof S.waterfall.ceilingDb === 'number') setRangeAndLabel('wfCeilingDb', S.waterfall.ceilingDb);
+      if(typeof S.waterfall.persistence === 'number') setRangeAndLabel('wfPersistence', S.waterfall.persistence);
       updateFreqLabels();
     }
     if(typeof saved.drive === 'number') setRangeAndLabel('driveSlider', Math.round(saved.drive*100));
@@ -3419,6 +3509,11 @@
       if(saved.img.cols) $('imgCols').value = saved.img.cols;
       if(saved.img.frame) setRangeAndLabel('imgFrame', saved.img.frame);
       if(saved.img.gamma) setRangeAndLabel('imgGamma', saved.img.gamma);
+      if(saved.img.fftSize) $('imgFftSize').value = saved.img.fftSize;
+      if(typeof saved.img.logMap === 'boolean') $('imgLogMap').checked = saved.img.logMap;
+      if(saved.img.dynRange) setRangeAndLabel('imgDynRange', saved.img.dynRange);
+      if(saved.img.colSharp) setRangeAndLabel('imgColSharp', saved.img.colSharp);
+      updateImgResolutionHint();
     }
     if(saved.tune){
       if(saved.tune.freq) setRangeAndLabel('tuneFreq', saved.tune.freq);
@@ -3426,9 +3521,11 @@
     }
   }
 
-  ['wfGain','wfMin','wfMax','wfSpeed','wfFft','wfPalette','driveSlider','imgDriveSlider','txTailSlider',
+  ['wfGain','wfMin','wfMax','wfSpeed','wfFft','wfPalette','wfFloorDb','wfCeilingDb','wfPersistence',
+   'driveSlider','imgDriveSlider','txTailSlider',
    'pttMethod','cm108Bit','catBaud','catFraming','civTo','civFrom','monitorVolume',
-   'imgCols','imgRows','imgFrame','imgGamma','tuneFreq','tuneTimeout'].forEach(id=>{
+   'imgCols','imgRows','imgFrame','imgGamma','imgFftSize','imgLogMap','imgDynRange','imgColSharp',
+   'tuneFreq','tuneTimeout'].forEach(id=>{
     const el = $(id);
     if(el) el.addEventListener('change', saveSettings);
   });
@@ -3441,6 +3538,7 @@
   updateFreqLabels();
   updateVfoDisplay();
   updateDurationEstimate();
+  updateImgResolutionHint();
   updateMonitorButton();
 })();
 </script>
