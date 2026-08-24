@@ -901,7 +901,10 @@
         <option value="2048" selected>2048 (balanced)</option>
         <option value="4096">4096</option>
         <option value="8192">8192 (fine, slower)</option>
+        <option value="16384">16384 (very fine, heavier CPU)</option>
+        <option value="32768">32768 (max resolution — high CPU load)</option>
       </select>
+      <div class="hint">32768 is the browser's hard ceiling for real-time analysis (Web Audio's AnalyserNode caps out there) — there's no way to actually run higher than that, so that's as far as this goes even though the panel used to imply more room above 8192.</div>
 
       <label class="field">Colour palette</label>
       <select id="wfPalette">
