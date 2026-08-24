@@ -895,6 +895,12 @@
       <label class="field">Scroll speed <span class="range-val" id="wfSpeedVal">Normal</span></label>
       <input type="range" id="wfSpeed" min="1" max="5" step="1" value="3">
 
+      <label class="field" style="display:flex;align-items:center;justify-content:space-between;margin-top:9px;">
+        <span>Invert waterfall direction</span>
+        <input type="checkbox" id="wfInvertDir" style="width:auto;accent-color:var(--phosphor);">
+      </label>
+      <div class="hint">Default scrolls newest signal to the bottom. Invert to scroll newest to the top instead.</div>
+
       <label class="field">FFT size</label>
       <select id="wfFft">
         <option value="1024">1024 (fast, coarse)</option>
@@ -1032,7 +1038,7 @@
     radioOut:null, radioOutUsesCtxSink:false, // shared "over the air" bus every TX path connects to
     monitorGain:null, monitorDest:null, monitorEl:null, monitorOn:false, monitorVolume:0.6, // RX audio listen-through
     previewDest:null, previewEl:null, // shared local-playback routing for Preview buttons & Numbers Station monitor
-    waterfall:{ gain:1.0, min:300, max:2700, speed:3, fft:2048, palette:'phosphor', running:false, floorDb:-100, ceilingDb:-30, persistence:0.15 },
+    waterfall:{ gain:1.0, min:300, max:2700, speed:3, fft:2048, palette:'phosphor', running:false, floorDb:-100, ceilingDb:-30, persistence:0.15, invertDir:false },
     drive:0.2,
     pttMethod:'cat',
     tuning:false, tuneTimer:null, tuneOsc:null, tuneGain:null,
@@ -2510,8 +2516,16 @@
     S.analyser.getByteFrequencyData(freqData);
 
     const speedPx = S.waterfall.speed;
-    const imgData = ctx.getImageData(0, speedPx, w, h-speedPx);
-    ctx.putImageData(imgData, 0, 0);
+    const inverted = S.waterfall.invertDir;
+    if(inverted){
+      // newest row at top, older rows scroll downward off the bottom
+      const imgData = ctx.getImageData(0, 0, w, h-speedPx);
+      ctx.putImageData(imgData, 0, speedPx);
+    } else {
+      // newest row at bottom, older rows scroll upward off the top (default)
+      const imgData = ctx.getImageData(0, speedPx, w, h-speedPx);
+      ctx.putImageData(imgData, 0, 0);
+    }
 
     const sr = S.audioCtx.sampleRate;
     const nyquist = sr/2;
@@ -2535,7 +2549,7 @@
     }
     rctx.putImageData(rowImg,0,0);
     ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(rowCanvas, 0, 0, span, 1, 0, h-speedPx, w, speedPx);
+    ctx.drawImage(rowCanvas, 0, 0, span, 1, 0, inverted ? 0 : (h-speedPx), w, speedPx);
   }
 
   function buildTxPreviewCanvas(matrix, rows, cols, paletteName){
@@ -2588,7 +2602,11 @@
     ctx.fillRect(0,0,w,h);
     ctx.imageSmoothingEnabled = false;
     const destH = Math.max(1, Math.round((revealedRows/S.txPreviewCols) * h));
-    ctx.drawImage(S.txPreviewCanvas, 0, 0, S.txPreviewCanvas.width, revealedRows, 0, h-destH, w, destH);
+    if(S.waterfall.invertDir){
+      ctx.drawImage(S.txPreviewCanvas, 0, 0, S.txPreviewCanvas.width, revealedRows, 0, 0, w, destH);
+    } else {
+      ctx.drawImage(S.txPreviewCanvas, 0, 0, S.txPreviewCanvas.width, revealedRows, 0, h-destH, w, destH);
+    }
   }
 
   $('btnStartWaterfall').addEventListener('click', ()=>{
@@ -3904,6 +3922,7 @@
   $('wfMax').addEventListener('input', e=>{ S.waterfall.max=parseFloat(e.target.value)||3000; updateFreqLabels(); updateImgResolutionHint(); });
   const speedNames = {1:'Slow',2:'Relaxed',3:'Normal',4:'Fast',5:'Fastest'};
   bindRange('wfSpeed', v=>{ S.waterfall.speed=v; $('wfSpeedVal').textContent=speedNames[v]; });
+  $('wfInvertDir').addEventListener('change', e=>{ S.waterfall.invertDir = e.target.checked; saveSettings(); });
   $('wfFft').addEventListener('change', e=>{
     S.waterfall.fft = parseInt(e.target.value,10);
     if(S.analyser) S.analyser.fftSize = S.waterfall.fft;
@@ -4168,6 +4187,7 @@
       setRangeAndLabel('wfGain', S.waterfall.gain);
       $('wfMin').value = S.waterfall.min; $('wfMax').value = S.waterfall.max;
       setRangeAndLabel('wfSpeed', S.waterfall.speed);
+      $('wfInvertDir').checked = !!S.waterfall.invertDir;
       $('wfFft').value = S.waterfall.fft;
       $('wfPalette').value = S.waterfall.palette;
       if(typeof S.waterfall.floorDb === 'number') setRangeAndLabel('wfFloorDb', S.waterfall.floorDb);
