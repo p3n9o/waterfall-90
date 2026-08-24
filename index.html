@@ -391,6 +391,7 @@
           <button class="subtab-btn" data-subtab="txSubVoice">Voice (mic)</button>
           <button class="subtab-btn" data-subtab="txSubNumbers">Numbers Station</button>
           <button class="subtab-btn" data-subtab="txSubAudioFile">Audio File</button>
+          <button class="subtab-btn" data-subtab="txSubCW">CW / Morse</button>
         </div>
 
         <div class="subtab-view active" id="txSubImage">
@@ -585,6 +586,59 @@
             <span id="afStatusText">STANDBY</span><span id="afLoopStatus"></span>
           </div>
           <div class="hint">Transmit shares the same DE‑19 audio-out and PTT method as the rest of this app — connect DE‑19 audio (left panel) first. Long or infinite loops still carry the usual dead-man's-switch failsafe in the background; it just won't cut in for a long while.</div>
+        </div>
+
+        <div class="subtab-view" id="txSubCW">
+          <h3 class="sub" style="margin-top:0;">Send — text to Morse</h3>
+          <div class="freq-input">
+            <input type="text" id="cwMessage" placeholder="e.g. CQ CQ DE M7XXX K">
+            <button id="btnCwUseText">Use text</button>
+          </div>
+          <div class="hint" id="cwMorsePreview" style="word-break:break-all;"></div>
+
+          <label class="field">Speed <span class="range-val" id="cwWpmVal">18 WPM</span></label>
+          <input type="range" id="cwWpm" min="5" max="40" step="1" value="18">
+
+          <label class="field">Tone <span class="range-val" id="cwToneVal">600 Hz</span></label>
+          <input type="range" id="cwTone" min="300" max="1000" step="10" value="600">
+
+          <div class="two-col">
+            <div>
+              <label class="field">Repeats</label>
+              <input class="textfield" type="number" id="cwRepeats" min="1" max="99" step="1" value="1">
+            </div>
+            <div>
+              <label class="field">Drive <span class="range-val" id="cwDriveVal">20%</span></label>
+              <input type="range" id="cwDriveSlider" min="0" max="200" value="20">
+            </div>
+          </div>
+
+          <div class="progress-track" id="cwProgressTrack"><div class="progress-fill" id="cwProgressFill"></div></div>
+
+          <div class="scope-foot">
+            <button class="btn btn-primary" id="btnCwRender" disabled>1 · Render to audio</button>
+            <button class="btn btn-primary" id="btnCwPreview" disabled>▶ Preview (speaker)</button>
+            <button class="btn btn-tune" id="btnCwTx" disabled>2 · Transmit over air</button>
+          </div>
+          <div class="hint">Standard timing (dot = 1 unit, dash = 3, element gap = 1, letter gap = 3, word gap = 7) at 1200/WPM ms per unit. Unsupported characters are skipped. Sent as a keyed audio tone through the DE‑19 path, same as the rest of this app — put the rig in a phone (USB/LSB) mode.</div>
+
+          <div class="divider"></div>
+
+          <h3 class="sub">Receive — decode</h3>
+          <label class="field">Listen frequency <span class="range-val" id="cwDecodeFreqVal">600 Hz</span></label>
+          <input type="range" id="cwDecodeFreq" min="300" max="1000" step="10" value="600">
+          <label class="field">Assumed speed <span class="range-val" id="cwDecodeWpmVal">18 WPM</span></label>
+          <input type="range" id="cwDecodeWpm" min="5" max="40" step="1" value="18">
+          <label class="field">Squelch threshold <span class="range-val" id="cwSquelchVal">35%</span></label>
+          <input type="range" id="cwSquelch" min="0" max="100" step="1" value="35">
+
+          <button class="btn btn-primary" id="btnCwListen" style="margin-top:10px;">▶ Start decoding</button>
+          <div class="meter" style="margin-top:10px;"><div class="fill" id="cwRxMeter"></div></div>
+          <div class="meter-label"><span>Tone level</span><span id="cwRxMeterPct">0%</span></div>
+
+          <div id="cwDecodedText" style="margin-top:10px;font-family:var(--mono);font-size:13px;line-height:1.6;background:#060706;border:1px solid var(--line);border-radius:4px;padding:10px;min-height:60px;max-height:180px;overflow-y:auto;word-break:break-word;color:var(--phosphor);">(listening…)</div>
+          <button class="btn" id="btnCwClearDecode" style="margin-top:8px;justify-content:center;">Clear decoded text</button>
+          <div class="hint">Decodes from whatever DE‑19 audio-in is hearing (fixed-speed decode against the WPM above, not adaptive) — reuses the same receive audio connection as the waterfall, so connect DE‑19 audio (left panel) and it works whether or not the waterfall display itself is running.</div>
         </div>
       </div>
     </div>
@@ -798,6 +852,10 @@
       buffer:null, name:'', gain:0.2, pitchSemitones:0, speed:1.0,
       loopsRemaining:0, stopRequested:false, playing:false, txToRadio:false,
       currentSource:null, currentGain:null,
+    },
+    cw:{
+      drive:0.2, renderedBuffer:null, listening:false,
+      decodeState:null, decodeStateStart:0, symbolBuffer:'', decodedText:'',
     },
   };
 
@@ -2797,6 +2855,247 @@
       stopTxPreview();
     }
   });
+
+  // =====================================================================
+  // CW / MORSE — send: text encoded as standard-timing Morse, synthesized
+  // as a keyed audio tone (short raised-cosine ramps on every element so
+  // there's no click) and routed through the same DE-19 audio-out + PTT
+  // path as everything else in this app. Receive: a lightweight decoder
+  // that reads a single frequency bin out of the SAME analyser already
+  // driving the waterfall (S.analyser, live off DE-19 audio-in) and
+  // classifies on/off timing against a fixed assumed WPM.
+  // =====================================================================
+  const MORSE_MAP = {
+    A:'.-',B:'-...',C:'-.-.',D:'-..',E:'.',F:'..-.',G:'--.',H:'....',I:'..',J:'.---',
+    K:'-.-',L:'.-..',M:'--',N:'-.',O:'---',P:'.--.',Q:'--.-',R:'.-.',S:'...',T:'-',
+    U:'..-',V:'...-',W:'.--',X:'-..-',Y:'-.--',Z:'--..',
+    '0':'-----','1':'.----','2':'..---','3':'...--','4':'....-','5':'.....','6':'-....','7':'--...','8':'---..','9':'----.',
+    '.':'.-.-.-',',':'--..--','?':'..--..','/':'-..-.','-':'-....-','=':'-...-','@':'.--.-.',
+    "'":'.----.','!':'-.-.--','(':'-.--.',')':'-.--.-',':':'---...',';':'-.-.-.','+':'.-.-.','"':'.-..-.',
+  };
+  const MORSE_REVERSE = {};
+  Object.entries(MORSE_MAP).forEach(([ch,code])=>{ MORSE_REVERSE[code] = ch; });
+
+  function textToMorseString(text){
+    return text.toUpperCase().split('').map(ch=>{
+      if(ch === ' ') return '/';
+      return MORSE_MAP[ch] || '';
+    }).filter(s=>s!=='').join(' ');
+  }
+
+  function textToCwSchedule(text, wpm){
+    // Standard timing: dot = 1 unit, dash = 3 units, gap between elements
+    // of the same letter = 1 unit, gap between letters = 3 units, gap
+    // between words = 7 units. Unit length Tu = 1200/WPM ms (PARIS timing).
+    const Tu = 1200/Math.max(1,wpm);
+    const schedule = [];
+    const chars = text.toUpperCase().split('');
+    let pendingWordGap = false;
+    for(let i=0;i<chars.length;i++){
+      const ch = chars[i];
+      if(ch === ' '){ pendingWordGap = true; continue; }
+      const code = MORSE_MAP[ch];
+      if(!code) continue;
+      if(schedule.length){
+        schedule.push({on:false, duration: pendingWordGap ? Tu*7 : Tu*3});
+      }
+      pendingWordGap = false;
+      for(let j=0;j<code.length;j++){
+        schedule.push({on:true, duration: code[j]==='.' ? Tu : Tu*3});
+        if(j < code.length-1) schedule.push({on:false, duration:Tu});
+      }
+    }
+    return schedule;
+  }
+
+  function renderCwBuffer(){
+    if(!S.audioCtx) S.audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+    const text = $('cwMessage').value.trim();
+    if(!text){ $('cwMorsePreview').textContent = 'type a message first'; return; }
+    const wpm = parseFloat($('cwWpm').value);
+    const toneHz = parseFloat($('cwTone').value);
+    const repeats = Math.max(1, Math.min(99, parseInt($('cwRepeats').value,10)||1));
+    const sr = S.audioCtx.sampleRate;
+
+    let schedule = textToCwSchedule(text, wpm);
+    if(!schedule.length){ $('cwMorsePreview').textContent = 'no supported characters found'; return; }
+    // stitch repeats together with a word-gap-sized pause between them
+    const Tu = 1200/Math.max(1,wpm);
+    const oneRepeat = schedule;
+    const full = [];
+    for(let r=0;r<repeats;r++){
+      full.push(...oneRepeat);
+      if(r < repeats-1) full.push({on:false, duration:Tu*7});
+    }
+
+    const totalMs = full.reduce((s,seg)=>s+seg.duration,0);
+    const totalSamples = Math.max(1, Math.round(totalMs/1000*sr)) + Math.round(sr*0.05);
+    const buffer = S.audioCtx.createBuffer(1, totalSamples, sr);
+    const data = buffer.getChannelData(0);
+    const rampSamples = Math.max(1, Math.round(sr*0.005)); // 5ms raised-cosine ramp, click-free keying
+    let phase = 0;
+    const phaseInc = 2*Math.PI*toneHz/sr;
+    let offset = 0;
+    full.forEach(seg=>{
+      const segSamples = Math.max(1, Math.round(seg.duration/1000*sr));
+      for(let i=0;i<segSamples && offset+i<totalSamples;i++){
+        let amp = 0;
+        if(seg.on){
+          amp = 1;
+          if(i < rampSamples) amp = 0.5-0.5*Math.cos(Math.PI*i/rampSamples);
+          else if(i > segSamples-rampSamples) amp = 0.5-0.5*Math.cos(Math.PI*(segSamples-i)/rampSamples);
+        }
+        data[offset+i] = amp * Math.sin(phase);
+        phase += phaseInc;
+      }
+      offset += segSamples;
+    });
+
+    S.cw.renderedBuffer = buffer;
+    $('cwMorsePreview').textContent = textToMorseString(text) + `  —  ${(totalMs/1000).toFixed(1)}s @ ${wpm} WPM`;
+    $('btnCwPreview').disabled = false;
+    $('btnCwTx').disabled = false;
+  }
+
+  function playCwBuffer(toRadio){
+    if(!S.cw.renderedBuffer) return;
+    const src = S.audioCtx.createBufferSource();
+    src.buffer = S.cw.renderedBuffer;
+    const gain = S.audioCtx.createGain();
+    gain.gain.value = toRadio ? S.cw.drive : 0.7;
+    src.connect(gain);
+    if(toRadio && S.outDest) gain.connect(S.outDest);
+    else gain.connect(ensurePreviewRouting());
+    src.start();
+    return src;
+  }
+
+  $('cwMessage').addEventListener('input', ()=>{
+    $('btnCwRender').disabled = !$('cwMessage').value.trim();
+  });
+  $('btnCwUseText').addEventListener('click', ()=>{
+    if(!$('cwMessage').value.trim()) return;
+    $('btnCwRender').disabled = false;
+    renderCwBuffer();
+  });
+  $('btnCwRender').addEventListener('click', renderCwBuffer);
+  $('btnCwPreview').addEventListener('click', ()=> playCwBuffer(false));
+
+  $('btnCwTx').addEventListener('click', async ()=>{
+    if(!S.cw.renderedBuffer) return;
+    await enablePTT(S.cw.renderedBuffer.duration*1000 + S.txTailMs + 3000);
+    try{
+      const src = playCwBuffer(true);
+      src.onended = ()=>{ setTimeout(()=> disablePTT(), S.txTailMs); };
+      const expectedMs = S.cw.renderedBuffer.duration*1000 + S.txTailMs + 1500;
+      setTimeout(()=>{ if($('vfoRxTx').textContent==='TX') disablePTT(); }, expectedMs);
+    }catch(err){
+      console.error('CW transmit failed to start', err);
+      disablePTT();
+    }
+  });
+
+  bindRange('cwWpm', v=>{ $('cwWpmVal').textContent = Math.round(v)+' WPM'; });
+  bindRange('cwTone', v=>{ $('cwToneVal').textContent = Math.round(v)+' Hz'; });
+  bindRange('cwDriveSlider', v=>{ S.cw.drive = v/100; $('cwDriveVal').textContent = Math.round(v)+'%'; });
+
+  // ---- CW receive decode ----
+  function cwFreqToBin(freq){
+    if(!S.analyser || !S.audioCtx) return null;
+    const nyquist = S.audioCtx.sampleRate/2;
+    const binHz = nyquist/S.analyser.frequencyBinCount;
+    return Math.round(freq/binHz);
+  }
+
+  function cwFlushChar(){
+    if(!S.cw.symbolBuffer) return;
+    const ch = MORSE_REVERSE[S.cw.symbolBuffer] || '?';
+    S.cw.decodedText += ch;
+    S.cw.symbolBuffer = '';
+    cwUpdateReadout();
+  }
+  function cwUpdateReadout(){
+    $('cwDecodedText').textContent = S.cw.decodedText || '(listening…)';
+    $('cwDecodedText').scrollTop = $('cwDecodedText').scrollHeight;
+  }
+
+  let cwDecodeData;
+  function cwDecodeLoop(){
+    if(!S.cw.listening) return;
+    requestAnimationFrame(cwDecodeLoop);
+    if(!S.analyser){ return; }
+    if(!cwDecodeData || cwDecodeData.length !== S.analyser.frequencyBinCount){
+      cwDecodeData = new Uint8Array(S.analyser.frequencyBinCount);
+    }
+    S.analyser.getByteFrequencyData(cwDecodeData);
+    const bin = cwFreqToBin(parseFloat($('cwDecodeFreq').value));
+    if(bin === null) return;
+    let mag = 0, count = 0;
+    for(let b=Math.max(0,bin-1); b<=Math.min(cwDecodeData.length-1,bin+1); b++){ mag += cwDecodeData[b]; count++; }
+    mag = count ? mag/count : 0;
+    $('cwRxMeter').style.width = Math.min(100, Math.round(mag/255*100))+'%';
+    $('cwRxMeterPct').textContent = Math.min(100, Math.round(mag/255*100))+'%';
+
+    const thresholdVal = (parseFloat($('cwSquelch').value)/100)*255;
+    const isOn = mag > thresholdVal;
+    const now = performance.now();
+    const wpm = parseFloat($('cwDecodeWpm').value)||18;
+    const Tu = 1200/wpm;
+
+    if(S.cw.decodeState === null){
+      S.cw.decodeState = isOn;
+      S.cw.decodeStateStart = now;
+      return;
+    }
+    if(isOn !== S.cw.decodeState){
+      const durationMs = now - S.cw.decodeStateStart;
+      if(S.cw.decodeState === true){
+        // an "on" element just finished — classify dot vs dash
+        S.cw.symbolBuffer += (durationMs < Tu*2 ? '.' : '-');
+      } else {
+        // an "off" gap just finished
+        if(durationMs >= Tu*5){
+          cwFlushChar();
+          S.cw.decodedText += ' ';
+          cwUpdateReadout();
+        } else if(durationMs >= Tu*1.5){
+          cwFlushChar();
+        }
+        // shorter gaps are just the space between elements of one letter — ignored
+      }
+      S.cw.decodeState = isOn;
+      S.cw.decodeStateStart = now;
+    } else if(!isOn){
+      // been silent a while — flush any trailing partial character so it
+      // doesn't sit stuck in the buffer waiting for the next transmission
+      const idleMs = now - S.cw.decodeStateStart;
+      if(idleMs > Tu*5 && S.cw.symbolBuffer) cwFlushChar();
+    }
+  }
+
+  function setCwListening(on){
+    S.cw.listening = on;
+    $('btnCwListen').textContent = on ? '■ Stop decoding' : '▶ Start decoding';
+    $('btnCwListen').classList.toggle('connected', on);
+    if(on){
+      if(!S.analyser){ alert('Connect DE‑19 audio first (left panel).'); S.cw.listening=false; $('btnCwListen').textContent='▶ Start decoding'; $('btnCwListen').classList.remove('connected'); return; }
+      S.cw.decodeState = null;
+      S.cw.symbolBuffer = '';
+      cwDecodeLoop();
+    } else {
+      $('cwRxMeter').style.width = '0%';
+      $('cwRxMeterPct').textContent = '0%';
+    }
+  }
+  $('btnCwListen').addEventListener('click', ()=> setCwListening(!S.cw.listening));
+  $('btnCwClearDecode').addEventListener('click', ()=>{
+    S.cw.decodedText = '';
+    S.cw.symbolBuffer = '';
+    cwUpdateReadout();
+  });
+  bindRange('cwDecodeFreq', v=>{ $('cwDecodeFreqVal').textContent = Math.round(v)+' Hz'; });
+  bindRange('cwDecodeWpm', v=>{ $('cwDecodeWpmVal').textContent = Math.round(v)+' WPM'; });
+  bindRange('cwSquelch', v=>{ $('cwSquelchVal').textContent = Math.round(v)+'%'; });
 
   // =====================================================================
   // PTT unified control
