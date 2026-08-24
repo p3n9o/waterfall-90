@@ -394,6 +394,7 @@
           <button class="subtab-btn" data-subtab="txSubNumbers">Numbers Station</button>
           <button class="subtab-btn" data-subtab="txSubAudioFile">Audio File</button>
           <button class="subtab-btn" data-subtab="txSubCW">CW / Morse</button>
+          <button class="subtab-btn" data-subtab="txSubRTTY">RTTY</button>
         </div>
 
         <div class="subtab-view active" id="txSubImage">
@@ -706,6 +707,76 @@
           <div id="cwDecodedText" style="margin-top:10px;font-family:var(--mono);font-size:13px;line-height:1.6;background:#060706;border:1px solid var(--line);border-radius:4px;padding:10px;min-height:60px;max-height:180px;overflow-y:auto;word-break:break-word;color:var(--phosphor);">(listening…)</div>
           <button class="btn" id="btnCwClearDecode" style="margin-top:8px;justify-content:center;">Clear decoded text</button>
           <div class="hint">Decodes from whatever DE‑19 audio-in is hearing (fixed-speed decode against the WPM above, not adaptive) — reuses the same receive audio connection as the waterfall, so connect DE‑19 audio (left panel) and it works whether or not the waterfall display itself is running.</div>
+        </div>
+
+        <div class="subtab-view" id="txSubRTTY">
+          <h3 class="sub" style="margin-top:0;">Send — text to RTTY (Baudot/ITA2)</h3>
+          <textarea id="rttyMessage" class="textfield" style="min-height:60px;resize:vertical;" placeholder="e.g. CQ CQ DE M7XXX M7XXX K"></textarea>
+          <div class="hint" id="rttyPreview" style="word-break:break-all;"></div>
+
+          <div class="two-col" style="margin-top:10px;">
+            <div>
+              <label class="field">Baud rate</label>
+              <select id="rttyBaud">
+                <option value="45.45" selected>45.45 (standard, ~60 WPM)</option>
+                <option value="50">50 baud</option>
+                <option value="56.92">56.92 baud (WARC)</option>
+                <option value="75">75 baud</option>
+                <option value="100">100 baud</option>
+              </select>
+            </div>
+            <div>
+              <label class="field">Stop bits</label>
+              <select id="rttyStopBits">
+                <option value="1">1</option>
+                <option value="1.5" selected>1.5 (standard)</option>
+                <option value="2">2</option>
+              </select>
+            </div>
+          </div>
+
+          <label class="field">Mark tone <span class="range-val" id="rttyMarkVal">2125 Hz</span></label>
+          <input type="range" id="rttyMark" min="300" max="2700" step="5" value="2125">
+
+          <label class="field">Shift <span class="range-val" id="rttyShiftVal">170 Hz</span></label>
+          <input type="range" id="rttyShift" min="23" max="1000" step="1" value="170">
+          <div class="btn-row">
+            <button class="btn" data-shift="170">170 Hz</button>
+            <button class="btn" data-shift="200">200 Hz</button>
+            <button class="btn" data-shift="425">425 Hz</button>
+            <button class="btn" data-shift="850">850 Hz</button>
+          </div>
+          <div class="hint">Space tone <span id="rttySpaceVal">1955 Hz</span> — computed from Mark tone and Shift (Space = Mark − Shift, or Mark + Shift with Reverse ticked below). Keep both tones inside the waterfall passband set in <b>Settings → Waterfall display</b>.</div>
+
+          <label class="field" style="display:flex;align-items:center;justify-content:space-between;margin-top:14px;">
+            <span>Reverse (swap mark/space sense)</span>
+            <input type="checkbox" id="rttyReverse" style="width:auto;accent-color:var(--phosphor);">
+          </label>
+          <label class="field" style="display:flex;align-items:center;justify-content:space-between;margin-top:10px;">
+            <span>Unshift on space (USOS)</span>
+            <input type="checkbox" id="rttyUsos" checked style="width:auto;accent-color:var(--phosphor);">
+          </label>
+
+          <div class="two-col" style="margin-top:10px;">
+            <div>
+              <label class="field">Repeats</label>
+              <input class="textfield" type="number" id="rttyRepeats" min="1" max="99" step="1" value="1">
+            </div>
+            <div>
+              <label class="field">Drive <span class="range-val" id="rttyDriveVal">20%</span></label>
+              <input type="range" id="rttyDriveSlider" min="0" max="200" value="20">
+            </div>
+          </div>
+
+          <div class="progress-track" id="rttyProgressTrack"><div class="progress-fill" id="rttyProgressFill"></div></div>
+
+          <div class="scope-foot">
+            <button class="btn btn-primary" id="btnRttyRender" disabled>1 · Render to audio</button>
+            <button class="btn btn-primary" id="btnRttyPreview" disabled>▶ Preview (speaker)</button>
+            <button class="btn btn-tune" id="btnRttyTx" disabled>2 · Transmit over air</button>
+          </div>
+          <div class="hint">5‑bit Baudot/ITA2 encoding, 1 start bit + 5 data bits + stop bits, continuous-phase FSK (carrier never drops between mark and space — just like a real RTTY signal). LTRS/FIGS shift codes are inserted automatically as needed; unsupported characters are skipped. Sent as an audio tone pair through the DE‑19 path — put the rig in a phone (USB/LSB) mode, same as the rest of this app.</div>
+          <div class="hint warn">170&nbsp;Hz shift is the near-universal ham RTTY standard — only change Mark/Shift if you know the station or system you're working expects something else.</div>
         </div>
       </div>
     </div>
