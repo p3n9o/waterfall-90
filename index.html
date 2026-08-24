@@ -154,6 +154,19 @@
   label.field{display:block;font-family:var(--mono);font-size:10px;color:var(--text-dim);letter-spacing:.05em;text-transform:uppercase;margin:9px 0 5px;}
   label.field:first-child{margin-top:0;}
   input[type=range]{width:100%;accent-color:var(--phosphor);}
+
+  /* Typable number box injected next to every range slider so exact values
+     can be typed in instead of only dragged. */
+  .slider-with-input{display:flex;align-items:center;gap:8px;}
+  .slider-with-input input[type=range]{width:auto;flex:1 1 auto;min-width:0;}
+  .slider-number-input{
+    flex:none;width:4.8em;font-family:var(--mono);font-size:11px;text-align:right;
+    background:#060706;border:1px solid var(--line);color:var(--phosphor);border-radius:4px;
+    padding:4px 6px;-moz-appearance:textfield;
+  }
+  .slider-number-input::-webkit-inner-spin-button,
+  .slider-number-input::-webkit-outer-spin-button{-webkit-appearance:none;margin:0;}
+  .slider-number-input:focus{outline:none;border-color:var(--phosphor-dim);}
   .range-val{font-family:var(--mono);font-size:11px;color:var(--phosphor);float:right;}
 
   select, .textfield{
@@ -654,129 +667,172 @@
         </div>
 
         <div class="subtab-view" id="txSubCW">
-          <h3 class="sub" style="margin-top:0;">Send — text to Morse</h3>
-          <div class="freq-input">
-            <input type="text" id="cwMessage" placeholder="e.g. CQ CQ DE M7XXX K">
-            <button id="btnCwUseText">Use text</button>
-          </div>
-          <div class="hint" id="cwMorsePreview" style="word-break:break-all;"></div>
-
-          <label class="field">Character speed <span class="range-val" id="cwWpmVal">18 WPM</span></label>
-          <input type="range" id="cwWpm" min="5" max="40" step="1" value="18">
-
-          <label class="field">Farnsworth spacing <span class="range-val" id="cwFarnsworthVal">18 WPM (off)</span></label>
-          <input type="range" id="cwFarnsworth" min="5" max="40" step="1" value="18">
-
-          <label class="field">Tone <span class="range-val" id="cwToneVal">600 Hz</span></label>
-          <input type="range" id="cwTone" min="300" max="1000" step="10" value="600">
-
-          <div class="two-col">
-            <div>
-              <label class="field">Repeats</label>
-              <input class="textfield" type="number" id="cwRepeats" min="1" max="99" step="1" value="1">
+          <details class="panel" open style="padding:10px 12px 12px;">
+            <summary style="cursor:pointer;font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--text-dim);">Transmit</summary>
+            <div style="height:8px"></div>
+            <h3 class="sub" style="margin-top:0;">Send — text to Morse</h3>
+            <div class="freq-input">
+              <input type="text" id="cwMessage" placeholder="e.g. CQ CQ DE M7XXX K">
+              <button id="btnCwUseText">Use text</button>
             </div>
-            <div>
-              <label class="field">Drive <span class="range-val" id="cwDriveVal">20%</span></label>
-              <input type="range" id="cwDriveSlider" min="0" max="200" value="20">
+            <div class="hint" id="cwMorsePreview" style="word-break:break-all;"></div>
+
+            <label class="field">Character speed <span class="range-val" id="cwWpmVal">18 WPM</span></label>
+            <input type="range" id="cwWpm" min="5" max="40" step="1" value="18">
+
+            <label class="field">Farnsworth spacing <span class="range-val" id="cwFarnsworthVal">18 WPM (off)</span></label>
+            <input type="range" id="cwFarnsworth" min="5" max="40" step="1" value="18">
+
+            <label class="field">Tone <span class="range-val" id="cwToneVal">600 Hz</span></label>
+            <input type="range" id="cwTone" min="300" max="1000" step="10" value="600">
+
+            <div class="two-col">
+              <div>
+                <label class="field">Repeats</label>
+                <input class="textfield" type="number" id="cwRepeats" min="1" max="99" step="1" value="1">
+              </div>
+              <div>
+                <label class="field">Drive <span class="range-val" id="cwDriveVal">20%</span></label>
+                <input type="range" id="cwDriveSlider" min="0" max="200" value="20">
+              </div>
             </div>
-          </div>
 
-          <div class="progress-track" id="cwProgressTrack"><div class="progress-fill" id="cwProgressFill"></div></div>
+            <div class="progress-track" id="cwProgressTrack"><div class="progress-fill" id="cwProgressFill"></div></div>
 
-          <div class="scope-foot">
-            <button class="btn btn-primary" id="btnCwRender" disabled>1 · Render to audio</button>
-            <button class="btn btn-primary" id="btnCwPreview" disabled>▶ Preview (speaker)</button>
-            <button class="btn btn-tune" id="btnCwTx" disabled>2 · Transmit over air</button>
-          </div>
-          <div class="hint">Standard timing (dot = 1 unit, dash = 3, element gap = 1) at 1200/WPM ms per unit, using <b>Character speed</b> for the dots/dashes themselves. <b>Farnsworth spacing</b> stretches only the gaps between letters and words to a slower effective WPM — set it equal to Character speed for standard (non-Farnsworth) timing, or lower to keep individual characters crisp while giving your ear more time between them. Prosigns like <b>&lt;AR&gt;</b>, <b>&lt;SK&gt;</b>, <b>&lt;BT&gt;</b>, <b>&lt;KN&gt;</b>, <b>&lt;AS&gt;</b> are sent as one run-together symbol. Unsupported characters are flagged in the preview above (shown as <b>[x?]</b>) rather than silently dropped. Sent as a keyed audio tone through the DE‑19 path, same as the rest of this app — put the rig in a phone (USB/LSB) mode.</div>
+            <div class="scope-foot">
+              <button class="btn btn-primary" id="btnCwRender" disabled>1 · Render to audio</button>
+              <button class="btn btn-primary" id="btnCwPreview" disabled>▶ Preview (speaker)</button>
+              <button class="btn btn-tune" id="btnCwTx" disabled>2 · Transmit over air</button>
+            </div>
+            <div class="hint">Standard timing (dot = 1 unit, dash = 3, element gap = 1) at 1200/WPM ms per unit, using <b>Character speed</b> for the dots/dashes themselves. <b>Farnsworth spacing</b> stretches only the gaps between letters and words to a slower effective WPM — set it equal to Character speed for standard (non-Farnsworth) timing, or lower to keep individual characters crisp while giving your ear more time between them. Prosigns like <b>&lt;AR&gt;</b>, <b>&lt;SK&gt;</b>, <b>&lt;BT&gt;</b>, <b>&lt;KN&gt;</b>, <b>&lt;AS&gt;</b> are sent as one run-together symbol. Unsupported characters are flagged in the preview above (shown as <b>[x?]</b>) rather than silently dropped. Sent as a keyed audio tone through the DE‑19 path, same as the rest of this app — put the rig in a phone (USB/LSB) mode.</div>
+          </details>
 
-          <div class="divider"></div>
+          <details class="panel" open style="margin-top:12px;padding:10px 12px 12px;">
+            <summary style="cursor:pointer;font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--text-dim);">Receive</summary>
+            <div style="height:8px"></div>
+            <h3 class="sub" style="margin-top:0;">Receive — decode</h3>
+            <label class="field">Listen frequency <span class="range-val" id="cwDecodeFreqVal">600 Hz</span></label>
+            <input type="range" id="cwDecodeFreq" min="300" max="1000" step="10" value="600">
+            <label class="field">Assumed speed <span class="range-val" id="cwDecodeWpmVal">18 WPM</span></label>
+            <input type="range" id="cwDecodeWpm" min="5" max="40" step="1" value="18">
+            <label class="field">Squelch threshold <span class="range-val" id="cwSquelchVal">35%</span></label>
+            <input type="range" id="cwSquelch" min="0" max="100" step="1" value="35">
 
-          <h3 class="sub">Receive — decode</h3>
-          <label class="field">Listen frequency <span class="range-val" id="cwDecodeFreqVal">600 Hz</span></label>
-          <input type="range" id="cwDecodeFreq" min="300" max="1000" step="10" value="600">
-          <label class="field">Assumed speed <span class="range-val" id="cwDecodeWpmVal">18 WPM</span></label>
-          <input type="range" id="cwDecodeWpm" min="5" max="40" step="1" value="18">
-          <label class="field">Squelch threshold <span class="range-val" id="cwSquelchVal">35%</span></label>
-          <input type="range" id="cwSquelch" min="0" max="100" step="1" value="35">
+            <button class="btn btn-primary" id="btnCwListen" style="margin-top:10px;">▶ Start decoding</button>
+            <div class="meter" style="margin-top:10px;"><div class="fill" id="cwRxMeter"></div></div>
+            <div class="meter-label"><span>Tone level</span><span id="cwRxMeterPct">0%</span></div>
 
-          <button class="btn btn-primary" id="btnCwListen" style="margin-top:10px;">▶ Start decoding</button>
-          <div class="meter" style="margin-top:10px;"><div class="fill" id="cwRxMeter"></div></div>
-          <div class="meter-label"><span>Tone level</span><span id="cwRxMeterPct">0%</span></div>
-
-          <div id="cwDecodedText" style="margin-top:10px;font-family:var(--mono);font-size:13px;line-height:1.6;background:#060706;border:1px solid var(--line);border-radius:4px;padding:10px;min-height:60px;max-height:180px;overflow-y:auto;word-break:break-word;color:var(--phosphor);">(listening…)</div>
-          <button class="btn" id="btnCwClearDecode" style="margin-top:8px;justify-content:center;">Clear decoded text</button>
-          <div class="hint">Decodes from whatever DE‑19 audio-in is hearing (fixed-speed decode against the WPM above, not adaptive) — reuses the same receive audio connection as the waterfall, so connect DE‑19 audio (left panel) and it works whether or not the waterfall display itself is running.</div>
+            <div id="cwDecodedText" style="margin-top:10px;font-family:var(--mono);font-size:13px;line-height:1.6;background:#060706;border:1px solid var(--line);border-radius:4px;padding:10px;min-height:60px;max-height:180px;overflow-y:auto;word-break:break-word;color:var(--phosphor);">(listening…)</div>
+            <button class="btn" id="btnCwClearDecode" style="margin-top:8px;justify-content:center;">Clear decoded text</button>
+            <div class="hint">Decodes from whatever DE‑19 audio-in is hearing (fixed-speed decode against the WPM above, not adaptive) — reuses the same receive audio connection as the waterfall, so connect DE‑19 audio (left panel) and it works whether or not the waterfall display itself is running.</div>
+          </details>
         </div>
 
         <div class="subtab-view" id="txSubRTTY">
-          <h3 class="sub" style="margin-top:0;">Send — text to RTTY (Baudot/ITA2)</h3>
-          <textarea id="rttyMessage" class="textfield" style="min-height:60px;resize:vertical;" placeholder="e.g. CQ CQ DE M7XXX M7XXX K"></textarea>
-          <div class="hint" id="rttyPreview" style="word-break:break-all;"></div>
+          <details class="panel" open style="padding:10px 12px 12px;">
+            <summary style="cursor:pointer;font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--text-dim);">Transmit</summary>
+            <div style="height:8px"></div>
+            <h3 class="sub" style="margin-top:0;">Send — text to RTTY (Baudot/ITA2)</h3>
+            <textarea id="rttyMessage" class="textfield" style="min-height:60px;resize:vertical;" placeholder="e.g. CQ CQ DE M7XXX M7XXX K"></textarea>
+            <div class="hint" id="rttyPreview" style="word-break:break-all;"></div>
 
-          <div class="two-col" style="margin-top:10px;">
-            <div>
-              <label class="field">Baud rate</label>
-              <select id="rttyBaud">
-                <option value="45.45" selected>45.45 (standard, ~60 WPM)</option>
-                <option value="50">50 baud</option>
-                <option value="56.92">56.92 baud (WARC)</option>
-                <option value="75">75 baud</option>
-                <option value="100">100 baud</option>
-              </select>
+            <div class="two-col" style="margin-top:10px;">
+              <div>
+                <label class="field">Baud rate</label>
+                <select id="rttyBaud">
+                  <option value="45.45" selected>45.45 (standard, ~60 WPM)</option>
+                  <option value="50">50 baud</option>
+                  <option value="56.92">56.92 baud (WARC)</option>
+                  <option value="75">75 baud</option>
+                  <option value="100">100 baud</option>
+                </select>
+              </div>
+              <div>
+                <label class="field">Stop bits</label>
+                <select id="rttyStopBits">
+                  <option value="1">1</option>
+                  <option value="1.5" selected>1.5 (standard)</option>
+                  <option value="2">2</option>
+                </select>
+              </div>
             </div>
-            <div>
-              <label class="field">Stop bits</label>
-              <select id="rttyStopBits">
-                <option value="1">1</option>
-                <option value="1.5" selected>1.5 (standard)</option>
-                <option value="2">2</option>
-              </select>
+
+            <label class="field">Mark tone <span class="range-val" id="rttyMarkVal">2125 Hz</span></label>
+            <input type="range" id="rttyMark" min="300" max="2700" step="5" value="2125">
+
+            <label class="field">Shift <span class="range-val" id="rttyShiftVal">170 Hz</span></label>
+            <input type="range" id="rttyShift" min="23" max="1000" step="1" value="170">
+            <div class="btn-row">
+              <button class="btn" data-shift="170">170 Hz</button>
+              <button class="btn" data-shift="200">200 Hz</button>
+              <button class="btn" data-shift="425">425 Hz</button>
+              <button class="btn" data-shift="850">850 Hz</button>
             </div>
-          </div>
+            <div class="hint">Space tone <span id="rttySpaceVal">1955 Hz</span> — computed from Mark tone and Shift (Space = Mark − Shift, or Mark + Shift with Reverse ticked below). Keep both tones inside the waterfall passband set in <b>Settings → Waterfall display</b>.</div>
 
-          <label class="field">Mark tone <span class="range-val" id="rttyMarkVal">2125 Hz</span></label>
-          <input type="range" id="rttyMark" min="300" max="2700" step="5" value="2125">
+            <label class="field" style="display:flex;align-items:center;justify-content:space-between;margin-top:14px;">
+              <span>Reverse (swap mark/space sense)</span>
+              <input type="checkbox" id="rttyReverse" style="width:auto;accent-color:var(--phosphor);">
+            </label>
+            <label class="field" style="display:flex;align-items:center;justify-content:space-between;margin-top:10px;">
+              <span>Unshift on space (USOS)</span>
+              <input type="checkbox" id="rttyUsos" checked style="width:auto;accent-color:var(--phosphor);">
+            </label>
 
-          <label class="field">Shift <span class="range-val" id="rttyShiftVal">170 Hz</span></label>
-          <input type="range" id="rttyShift" min="23" max="1000" step="1" value="170">
-          <div class="btn-row">
-            <button class="btn" data-shift="170">170 Hz</button>
-            <button class="btn" data-shift="200">200 Hz</button>
-            <button class="btn" data-shift="425">425 Hz</button>
-            <button class="btn" data-shift="850">850 Hz</button>
-          </div>
-          <div class="hint">Space tone <span id="rttySpaceVal">1955 Hz</span> — computed from Mark tone and Shift (Space = Mark − Shift, or Mark + Shift with Reverse ticked below). Keep both tones inside the waterfall passband set in <b>Settings → Waterfall display</b>.</div>
-
-          <label class="field" style="display:flex;align-items:center;justify-content:space-between;margin-top:14px;">
-            <span>Reverse (swap mark/space sense)</span>
-            <input type="checkbox" id="rttyReverse" style="width:auto;accent-color:var(--phosphor);">
-          </label>
-          <label class="field" style="display:flex;align-items:center;justify-content:space-between;margin-top:10px;">
-            <span>Unshift on space (USOS)</span>
-            <input type="checkbox" id="rttyUsos" checked style="width:auto;accent-color:var(--phosphor);">
-          </label>
-
-          <div class="two-col" style="margin-top:10px;">
-            <div>
-              <label class="field">Repeats</label>
-              <input class="textfield" type="number" id="rttyRepeats" min="1" max="99" step="1" value="1">
+            <div class="two-col" style="margin-top:10px;">
+              <div>
+                <label class="field">Repeats</label>
+                <input class="textfield" type="number" id="rttyRepeats" min="1" max="99" step="1" value="1">
+              </div>
+              <div>
+                <label class="field">Drive <span class="range-val" id="rttyDriveVal">20%</span></label>
+                <input type="range" id="rttyDriveSlider" min="0" max="200" value="20">
+              </div>
             </div>
-            <div>
-              <label class="field">Drive <span class="range-val" id="rttyDriveVal">20%</span></label>
-              <input type="range" id="rttyDriveSlider" min="0" max="200" value="20">
+
+            <div class="progress-track" id="rttyProgressTrack"><div class="progress-fill" id="rttyProgressFill"></div></div>
+
+            <div class="scope-foot">
+              <button class="btn btn-primary" id="btnRttyRender" disabled>1 · Render to audio</button>
+              <button class="btn btn-primary" id="btnRttyPreview" disabled>▶ Preview (speaker)</button>
+              <button class="btn btn-tune" id="btnRttyTx" disabled>2 · Transmit over air</button>
             </div>
-          </div>
+            <div class="hint">5‑bit Baudot/ITA2 encoding, 1 start bit + 5 data bits + stop bits, continuous-phase FSK (carrier never drops between mark and space — just like a real RTTY signal). LTRS/FIGS shift codes are inserted automatically as needed; unsupported characters are skipped. Sent as an audio tone pair through the DE‑19 path — put the rig in a phone (USB/LSB) mode, same as the rest of this app.</div>
+            <div class="hint warn">170&nbsp;Hz shift is the near-universal ham RTTY standard — only change Mark/Shift if you know the station or system you're working expects something else.</div>
+          </details>
 
-          <div class="progress-track" id="rttyProgressTrack"><div class="progress-fill" id="rttyProgressFill"></div></div>
+          <details class="panel" open style="margin-top:12px;padding:10px 12px 12px;">
+            <summary style="cursor:pointer;font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--text-dim);">Receive</summary>
+            <div style="height:8px"></div>
+            <h3 class="sub" style="margin-top:0;">Receive — decode</h3>
+            <label class="field">Listen mark tone <span class="range-val" id="rttyDecodeMarkVal">2125 Hz</span></label>
+            <input type="range" id="rttyDecodeMark" min="300" max="2700" step="5" value="2125">
+            <label class="field">Shift <span class="range-val" id="rttyDecodeShiftVal">170 Hz</span></label>
+            <input type="range" id="rttyDecodeShift" min="23" max="1000" step="1" value="170">
+            <div class="hint">Space tone <span id="rttyDecodeSpaceVal">1955 Hz</span> — computed from the two settings above.</div>
+            <label class="field" style="display:flex;align-items:center;justify-content:space-between;margin-top:10px;">
+              <span>Reverse (swap mark/space sense)</span>
+              <input type="checkbox" id="rttyDecodeReverse" style="width:auto;accent-color:var(--phosphor);">
+            </label>
+            <label class="field">Baud rate</label>
+            <select id="rttyDecodeBaud">
+              <option value="45.45" selected>45.45 (standard, ~60 WPM)</option>
+              <option value="50">50 baud</option>
+              <option value="56.92">56.92 baud (WARC)</option>
+              <option value="75">75 baud</option>
+              <option value="100">100 baud</option>
+            </select>
+            <label class="field">Squelch threshold <span class="range-val" id="rttyDecodeSquelchVal">35%</span></label>
+            <input type="range" id="rttyDecodeSquelch" min="0" max="100" step="1" value="35">
 
-          <div class="scope-foot">
-            <button class="btn btn-primary" id="btnRttyRender" disabled>1 · Render to audio</button>
-            <button class="btn btn-primary" id="btnRttyPreview" disabled>▶ Preview (speaker)</button>
-            <button class="btn btn-tune" id="btnRttyTx" disabled>2 · Transmit over air</button>
-          </div>
-          <div class="hint">5‑bit Baudot/ITA2 encoding, 1 start bit + 5 data bits + stop bits, continuous-phase FSK (carrier never drops between mark and space — just like a real RTTY signal). LTRS/FIGS shift codes are inserted automatically as needed; unsupported characters are skipped. Sent as an audio tone pair through the DE‑19 path — put the rig in a phone (USB/LSB) mode, same as the rest of this app.</div>
-          <div class="hint warn">170&nbsp;Hz shift is the near-universal ham RTTY standard — only change Mark/Shift if you know the station or system you're working expects something else.</div>
+            <button class="btn btn-primary" id="btnRttyListen" style="margin-top:10px;">▶ Start decoding</button>
+            <div class="meter" style="margin-top:10px;"><div class="fill" id="rttyRxMeter"></div></div>
+            <div class="meter-label"><span>Tone level</span><span id="rttyRxMeterPct">0%</span></div>
+
+            <div id="rttyDecodedText" style="margin-top:10px;font-family:var(--mono);font-size:13px;line-height:1.6;background:#060706;border:1px solid var(--line);border-radius:4px;padding:10px;min-height:60px;max-height:180px;overflow-y:auto;word-break:break-word;white-space:pre-wrap;color:var(--phosphor);">(listening…)</div>
+            <button class="btn" id="btnRttyClearDecode" style="margin-top:8px;justify-content:center;">Clear decoded text</button>
+            <div class="hint">Decodes from whatever DE‑19 audio-in is hearing — an async start/stop bit sync against the <b>Baud rate</b> above (not adaptive, so match it to the sending station), reusing the same receive audio connection as the waterfall. Connect DE‑19 audio (left panel) first; works whether or not the waterfall display itself is running. Best results with a strong, steady signal and Mark/Shift set to match what's actually being sent.</div>
+          </details>
         </div>
       </div>
     </div>
@@ -973,6 +1029,8 @@
     rtty:{
       drive:0.2, renderedBuffer:null,
       currentSource:null, // tracks the in-flight RTTY buffer source so a re-trigger can't overlap it
+      listening:false, frameActive:false, frameStartTime:0, frameBits:[],
+      lastIsMark:true, shiftState:'LTRS', decodedText:'', decodeIntervalId:null,
     },
   };
 
@@ -3387,6 +3445,144 @@
   bindRange('rttyDriveSlider', v=>{ S.rtty.drive = v/100; $('rttyDriveVal').textContent = Math.round(v)+'%'; });
 
   // =====================================================================
+  // RTTY (Baudot/ITA2) — receive/decode
+  //
+  //  - Real RTTY is asynchronous serial: the line idles at the mark tone,
+  //    and a mark→space transition is the start bit of a new 5-bit code.
+  //    The decoder watches for that edge, then samples the tone at the
+  //    middle of each of the 5 following bit periods (so small timing
+  //    jitter doesn't land right on an edge), reconstructs the code, and
+  //    feeds it through the same LTRS/FIGS shift-state tracking used for
+  //    transmit, in reverse — a FIGS/LTRS code flips the shift register
+  //    instead of producing a character.
+  //  - Below the squelch threshold there's no reliable tone to read, so
+  //    the decoder treats that as "still idle" rather than a false start
+  //    bit, and a frame that never completes (signal dropped mid-character)
+  //    is abandoned after a few bit-periods so the decoder can resync on
+  //    the next real edge instead of getting stuck.
+  //  - This is a best-effort, non-adaptive decoder (fixed to the Baud
+  //    rate control, like CW decode is fixed to its Assumed speed) — a
+  //    strong, steady signal at the right Mark/Shift decodes best.
+  // =====================================================================
+  function rttyMagAtFreq(freqData, freq){
+    const bin = cwFreqToBin(freq);
+    if(bin === null) return 0;
+    let mag = 0, count = 0;
+    for(let b=Math.max(0,bin-1); b<=Math.min(freqData.length-1,bin+1); b++){ mag += freqData[b]; count++; }
+    return count ? mag/count : 0;
+  }
+
+  function rttyUpdateReadout(){
+    $('rttyDecodedText').textContent = S.rtty.decodedText || '(listening…)';
+    $('rttyDecodedText').scrollTop = $('rttyDecodedText').scrollHeight;
+  }
+
+  function rttyHandleDecodedCode(code){
+    if(code === RTTY_FIGS_CODE){ S.rtty.shiftState = 'FIGS'; return; }
+    if(code === RTTY_LTRS_CODE){ S.rtty.shiftState = 'LTRS'; return; }
+    const row = BAUDOT_TABLE[code];
+    const ch = S.rtty.shiftState === 'FIGS' ? row.f : row.l;
+    if(!ch || ch === '\0' || ch === '\r') return; // blank code / unused / bare CR (LF carries the line break)
+    S.rtty.decodedText += ch;
+    rttyUpdateReadout();
+  }
+
+  let rttyDecodeData;
+  function rttyDecodePoll(){
+    if(!S.rtty.listening || !S.analyser) return;
+    if(!rttyDecodeData || rttyDecodeData.length !== S.analyser.frequencyBinCount){
+      rttyDecodeData = new Uint8Array(S.analyser.frequencyBinCount);
+    }
+    S.analyser.getByteFrequencyData(rttyDecodeData);
+
+    const markHz = parseFloat($('rttyDecodeMark').value);
+    const shiftHz = parseFloat($('rttyDecodeShift').value);
+    const reverse = $('rttyDecodeReverse').checked;
+    const spaceHz = Math.max(20, reverse ? markHz+shiftHz : markHz-shiftHz);
+    const baud = parseFloat($('rttyDecodeBaud').value);
+    const Tbit = 1000/baud;
+
+    const markMag = rttyMagAtFreq(rttyDecodeData, markHz);
+    const spaceMag = rttyMagAtFreq(rttyDecodeData, spaceHz);
+    const combined = Math.max(markMag, spaceMag);
+    $('rttyRxMeter').style.width = Math.min(100, Math.round(combined/255*100))+'%';
+    $('rttyRxMeterPct').textContent = Math.min(100, Math.round(combined/255*100))+'%';
+
+    const thresholdVal = (parseFloat($('rttyDecodeSquelch').value)/100)*255;
+    const haveSignal = combined > thresholdVal;
+    // below squelch: treat the line as idle mark rather than reading a
+    // (likely noisy) winner between two weak bins
+    const isMark = haveSignal ? (markMag >= spaceMag) : true;
+    const now = performance.now();
+
+    if(!S.rtty.frameActive){
+      if(S.rtty.lastIsMark === true && isMark === false){
+        // mark→space edge: start bit of a new code
+        S.rtty.frameActive = true;
+        S.rtty.frameStartTime = now;
+        S.rtty.frameBits = [];
+      }
+    } else {
+      const elapsed = now - S.rtty.frameStartTime;
+      if(elapsed > Tbit*20){
+        // frame never completed (signal dropped mid-character) — give up
+        // and resync on the next edge rather than staying stuck
+        S.rtty.frameActive = false;
+      } else {
+        while(S.rtty.frameBits.length < 5 && elapsed >= (1 + S.rtty.frameBits.length + 0.5)*Tbit){
+          S.rtty.frameBits.push(isMark ? 1 : 0);
+        }
+        if(S.rtty.frameBits.length === 5 && elapsed >= (1 + 5 + 0.25)*Tbit){
+          const b = S.rtty.frameBits;
+          const code = (b[0]<<4)|(b[1]<<3)|(b[2]<<2)|(b[3]<<1)|b[4];
+          rttyHandleDecodedCode(code);
+          S.rtty.frameActive = false;
+        }
+      }
+    }
+    S.rtty.lastIsMark = isMark;
+  }
+
+  function setRttyListening(on){
+    S.rtty.listening = on;
+    $('btnRttyListen').textContent = on ? '■ Stop decoding' : '▶ Start decoding';
+    $('btnRttyListen').classList.toggle('connected', on);
+    clearInterval(S.rtty.decodeIntervalId);
+    if(on){
+      if(!S.analyser){ alert('Connect DE‑19 audio first (left panel).'); S.rtty.listening=false; $('btnRttyListen').textContent='▶ Start decoding'; $('btnRttyListen').classList.remove('connected'); return; }
+      S.rtty.frameActive = false;
+      S.rtty.frameBits = [];
+      S.rtty.lastIsMark = true;
+      S.rtty.shiftState = 'LTRS';
+      // Polled on a fixed timer rather than requestAnimationFrame: RTTY bit
+      // periods (as short as ~9ms at 100 baud) are too tight to resolve
+      // reliably against a ~60Hz display refresh rate, unlike CW's much
+      // longer dot/dash timing.
+      S.rtty.decodeIntervalId = setInterval(rttyDecodePoll, 5);
+    } else {
+      $('rttyRxMeter').style.width = '0%';
+      $('rttyRxMeterPct').textContent = '0%';
+    }
+  }
+  $('btnRttyListen').addEventListener('click', ()=> setRttyListening(!S.rtty.listening));
+  $('btnRttyClearDecode').addEventListener('click', ()=>{
+    S.rtty.decodedText = '';
+    rttyUpdateReadout();
+  });
+
+  function updateRttyDecodeSpaceLabel(){
+    const mark = parseFloat($('rttyDecodeMark').value);
+    const shift = parseFloat($('rttyDecodeShift').value);
+    const reverse = $('rttyDecodeReverse').checked;
+    const space = reverse ? mark + shift : mark - shift;
+    $('rttyDecodeSpaceVal').textContent = Math.round(space)+' Hz';
+  }
+  bindRange('rttyDecodeMark', v=>{ $('rttyDecodeMarkVal').textContent = Math.round(v)+' Hz'; updateRttyDecodeSpaceLabel(); });
+  bindRange('rttyDecodeShift', v=>{ $('rttyDecodeShiftVal').textContent = Math.round(v)+' Hz'; updateRttyDecodeSpaceLabel(); });
+  $('rttyDecodeReverse').addEventListener('change', updateRttyDecodeSpaceLabel);
+  bindRange('rttyDecodeSquelch', v=>{ $('rttyDecodeSquelchVal').textContent = Math.round(v)+'%'; });
+
+  // =====================================================================
   // PTT unified control
   // =====================================================================
   let pttSafetyTimer = null;
@@ -3844,6 +4040,85 @@
     const el = $(id);
     if(el) el.addEventListener('change', saveSettings);
   });
+
+  // =====================================================================
+  // MANUAL VALUE ENTRY FOR SLIDERS — wraps every <input type="range"> with
+  // a small paired number box so an exact value can be typed instead of
+  // only dragged. Generic and automatic: it walks every range slider in
+  // the document rather than hand-wiring each one, so it also covers any
+  // slider added later without extra plumbing. Kept as a thin layer on
+  // top of the existing sliders rather than a replacement for them —
+  // typing a value sets the range's value and fires the same 'input'/
+  // 'change' events a drag would, so every existing bindRange()/listener
+  // above (labels, live audio params, settings persistence, etc.) keeps
+  // working unmodified.
+  // =====================================================================
+  function makeSliderTypable(range){
+    if(range.dataset.typableBound) return;
+    range.dataset.typableBound = '1';
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'slider-with-input';
+    range.parentNode.insertBefore(wrapper, range);
+    wrapper.appendChild(range);
+
+    const num = document.createElement('input');
+    num.type = 'number';
+    num.className = 'slider-number-input';
+    num.inputMode = 'decimal';
+    if(range.min !== '') num.min = range.min;
+    if(range.max !== '') num.max = range.max;
+    if(range.step !== '') num.step = range.step;
+    num.value = range.value;
+    wrapper.appendChild(num);
+
+    // Some sliders are conditionally hidden (display:none) by other code
+    // in this app rather than removed — e.g. a duplicate control shown
+    // via a different widget, or a field only relevant in one mode. Keep
+    // the number box's visibility mirrored to the slider's own via a
+    // style-attribute observer, so it never sits there orphaned when the
+    // slider it belongs to is hidden, and reappears correctly when shown.
+    function syncVisibility(){
+      num.style.display = (range.style.display === 'none') ? 'none' : '';
+    }
+    syncVisibility();
+    new MutationObserver(syncVisibility).observe(range, {attributes:true, attributeFilter:['style']});
+
+    // Range moved by drag/keyboard/programmatically -> reflect into the
+    // number box, unless the person is actively typing in it.
+    range.addEventListener('input', ()=>{
+      if(document.activeElement !== num) num.value = range.value;
+    });
+
+    // Live-update as the person types, without clamping mid-keystroke
+    // (clamping immediately would make it impossible to type e.g. "18"
+    // into a 5–40 range by first passing through the invalid "1").
+    // Assigning to range.value has the browser silently clamp to the
+    // slider's own min/max, so downstream logic never sees an out-of-
+    // range value even before the person finishes typing or tabs away.
+    num.addEventListener('input', ()=>{
+      const v = parseFloat(num.value);
+      if(!isNaN(v)){
+        range.value = v;
+        range.dispatchEvent(new Event('input', {bubbles:true}));
+      }
+    });
+
+    // On committing (blur or Enter), snap the number box's displayed text
+    // to whatever the slider actually settled on (clamped, step-aligned),
+    // and fire a 'change' event for any listener that only cares about
+    // the final value rather than every keystroke.
+    function commit(){
+      num.value = range.value;
+      range.dispatchEvent(new Event('change', {bubbles:true}));
+    }
+    num.addEventListener('change', commit);
+    num.addEventListener('keydown', e=>{
+      if(e.key === 'Enter'){ commit(); num.blur(); }
+    });
+  }
+
+  document.querySelectorAll('input[type="range"]').forEach(makeSliderTypable);
 
   renderThemeSwatches();
   initCustomPickers(DEFAULT_VARS);
