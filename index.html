@@ -280,6 +280,58 @@
     text-align:center;font-family:var(--mono);font-size:10px;color:var(--text-dim);
     padding:20px 20px 36px;letter-spacing:.03em;
   }
+
+  /* =====================================================================
+     LEGACY / RETRO THEME OVERRIDES
+     Themes in the "Legacy" category set html.classList to include
+     "flat-theme" (kills glow/gradients, squares corners) and optionally
+     "bevel-theme" (classic Windows/Mac 3D beveled widgets on top of that).
+     These are plain overrides on top of the normal rules above, using an
+     extra html-level class for specificity — no !important needed since
+     every selector below is more specific than the un-prefixed original.
+  ===================================================================== */
+  html.flat-theme .topbar{ background:var(--bg); }
+  html.flat-theme .brand .mark{ text-shadow:none; }
+  html.flat-theme .dot.on{ box-shadow:none; }
+  html.flat-theme .dot.warn{ box-shadow:none; }
+  html.flat-theme .dot.off{ box-shadow:none; }
+  html.flat-theme .btn-primary{ background:var(--panel-2); }
+  html.flat-theme .btn-primary:hover{ box-shadow:none; }
+  html.flat-theme .btn-tune{ background:var(--panel-2); }
+  html.flat-theme .btn-tune:hover{ box-shadow:none; }
+  html.flat-theme .btn-tune.active{ animation:none; box-shadow:none; }
+  html.flat-theme .band-btn.active{ box-shadow:none; }
+  html.flat-theme .vfo .hz{ text-shadow:none; }
+  html.flat-theme .vfo .hz .freqDigit:hover{ text-shadow:none; }
+  html.flat-theme .theme-swatch.active{ box-shadow:none; }
+  html.flat-theme .panel, html.flat-theme .btn, html.flat-theme .scope-wrap,
+  html.flat-theme .status-chip, html.flat-theme .freq-input input, html.flat-theme select,
+  html.flat-theme .textfield, html.flat-theme .band-btn, html.flat-theme .vfo,
+  html.flat-theme .drop-zone, html.flat-theme #imgPreview, html.flat-theme .zoom-btn,
+  html.flat-theme .theme-swatch, html.flat-theme .custom-color-field input[type=color]{
+    border-radius:2px;
+  }
+
+  html.bevel-theme .btn, html.bevel-theme .band-btn, html.bevel-theme .zoom-btn{
+    border-style:outset; border-width:2px; border-radius:0; box-shadow:none; background:var(--panel-2);
+  }
+  html.bevel-theme .btn:active, html.bevel-theme .band-btn:active, html.bevel-theme .zoom-btn:active{
+    border-style:inset;
+  }
+  html.bevel-theme .btn.connected, html.bevel-theme .band-btn.active{
+    border-style:inset; box-shadow:none;
+  }
+  html.bevel-theme .panel, html.bevel-theme .scope-wrap{
+    border-radius:0; border-style:groove; border-width:2px;
+  }
+  html.bevel-theme select, html.bevel-theme .textfield, html.bevel-theme .freq-input input,
+  html.bevel-theme .vfo{
+    border-radius:0; border-style:inset; border-width:2px;
+  }
+  html.bevel-theme .tab-btn.active{
+    border:2px outset var(--line); border-bottom-color:var(--panel); background:var(--panel);
+  }
+
 </style>
 </head>
 <body>
@@ -3972,6 +4024,32 @@
       {id:'simple-slate', name:'Simple Slate',  vars:{bg:'#20242b',panel:'#282d36',panel2:'#313742',line:'#454c58',phosphor:'#7fb3d5',phosphorDim:'#436079',amber:'#e0c068',amberDim:'#7d6c38',red:'#e07f7f',text:'#e6e9ee',textDim:'#8891a0'}},
       {id:'simple-paper', name:'Paper',         vars:{bg:'#efece4',panel:'#f8f6f0',panel2:'#e4e0d4',line:'#cac4b2',phosphor:'#3a5a40',phosphorDim:'#7f9884',amber:'#9c6b2e',amberDim:'#c0996a',red:'#a13d3d',text:'#242018',textDim:'#7c7666'}},
     ],
+    'Legacy': [
+      {id:'legacy-websdr', name:'WebSDR Classic', flat:true,
+        font:"Verdana, Geneva, Arial, sans-serif", mono:"'Courier New', Courier, monospace",
+        vars:{bg:'#ffffff',panel:'#f5f5f0',panel2:'#e8e8e0',line:'#a0a0a0',phosphor:'#0000ee',phosphorDim:'#6666cc',amber:'#996600',amberDim:'#cc9944',red:'#cc0000',text:'#000000',textDim:'#555555'}},
+      {id:'legacy-win95', name:'Windows 95', flat:true, bevel:true,
+        font:"Tahoma, 'MS Sans Serif', Arial, sans-serif", mono:"'Courier New', monospace",
+        vars:{bg:'#c0c0c0',panel:'#c0c0c0',panel2:'#dfdfdf',line:'#808080',phosphor:'#000080',phosphorDim:'#4040a0',amber:'#808000',amberDim:'#a0a040',red:'#800000',text:'#000000',textDim:'#404040'}},
+      {id:'legacy-win98', name:'Windows 98', flat:true, bevel:true,
+        font:"Tahoma, 'MS Sans Serif', Arial, sans-serif", mono:"'Courier New', monospace",
+        vars:{bg:'#3a6ea5',panel:'#d4d0c8',panel2:'#ece9d8',line:'#808080',phosphor:'#000080',phosphorDim:'#4a4a8a',amber:'#008080',amberDim:'#4d9999',red:'#800000',text:'#000000',textDim:'#4d4d4d'}},
+      {id:'legacy-winxp', name:'Windows XP', flat:true, bevel:true,
+        font:"Tahoma, Verdana, Arial, sans-serif", mono:"'Courier New', monospace",
+        vars:{bg:'#235ed4',panel:'#ece9d8',panel2:'#ffffff',line:'#7f9db9',phosphor:'#0a246a',phosphorDim:'#316ac5',amber:'#ff8c00',amberDim:'#ffb347',red:'#c00000',text:'#000000',textDim:'#4d4d4d'}},
+      {id:'legacy-macos', name:'Classic Mac OS', flat:true,
+        font:"Geneva, 'Lucida Grande', Arial, sans-serif", mono:"'Courier New', Courier, monospace",
+        vars:{bg:'#dddddd',panel:'#eeeeee',panel2:'#ffffff',line:'#888888',phosphor:'#000000',phosphorDim:'#555555',amber:'#996600',amberDim:'#cc9944',red:'#cc0000',text:'#000000',textDim:'#555555'}},
+      {id:'legacy-term-green', name:'Terminal Green', flat:true,
+        font:"'Courier New', Courier, monospace", mono:"'Courier New', Courier, monospace",
+        vars:{bg:'#000000',panel:'#0a0a0a',panel2:'#111111',line:'#1f3d1f',phosphor:'#33ff33',phosphorDim:'#1f8f1f',amber:'#33ff33',amberDim:'#1f8f1f',red:'#ff5555',text:'#33ff33',textDim:'#1f8f1f'}},
+      {id:'legacy-term-amber', name:'Terminal Amber', flat:true,
+        font:"'Courier New', Courier, monospace", mono:"'Courier New', Courier, monospace",
+        vars:{bg:'#000000',panel:'#0a0a0a',panel2:'#111111',line:'#4d3510',phosphor:'#ffb000',phosphorDim:'#8f6200',amber:'#ffb000',amberDim:'#8f6200',red:'#ff5555',text:'#ffb000',textDim:'#8f6200'}},
+      {id:'legacy-dos-blue', name:'DOS Blue', flat:true,
+        font:"'Courier New', Courier, monospace", mono:"'Courier New', Courier, monospace",
+        vars:{bg:'#0000aa',panel:'#0000aa',panel2:'#0000cc',line:'#5555ff',phosphor:'#ffff55',phosphorDim:'#aaaa00',amber:'#55ffff',amberDim:'#00aaaa',red:'#ff5555',text:'#ffffff',textDim:'#aaaaaa'}},
+    ],
   };
 
   function shade(hex, pct){
@@ -3982,7 +4060,11 @@
     return '#' + [mix(r),mix(g),mix(b)].map(v=>v.toString(16).padStart(2,'0')).join('');
   }
 
-  function applyThemeVars(vars){
+  const DEFAULT_FONT_SANS = "'Space Grotesk', ui-sans-serif, system-ui, sans-serif";
+  const DEFAULT_FONT_MONO = "'JetBrains Mono', ui-monospace, 'SF Mono', Consolas, monospace";
+
+  function applyThemeVars(vars, meta){
+    meta = meta || {};
     const root = document.documentElement.style;
     root.setProperty('--bg', vars.bg);
     root.setProperty('--panel', vars.panel);
@@ -3995,6 +4077,10 @@
     root.setProperty('--red', vars.red);
     root.setProperty('--text', vars.text);
     root.setProperty('--text-dim', vars.textDim);
+    root.setProperty('--sans', meta.font || DEFAULT_FONT_SANS);
+    root.setProperty('--mono', meta.mono || DEFAULT_FONT_MONO);
+    document.documentElement.classList.toggle('flat-theme', !!meta.flat);
+    document.documentElement.classList.toggle('bevel-theme', !!meta.bevel);
   }
 
   function findTheme(id){
@@ -4012,7 +4098,7 @@
   }
 
   function selectTheme(id, skipSave){
-    let vars;
+    let vars, meta = {};
     if(id === 'custom'){
       vars = S.customThemeVars || DEFAULT_VARS;
     } else if(id === 'default'){
@@ -4021,8 +4107,9 @@
       const t = findTheme(id);
       if(!t) return;
       vars = t.vars;
+      meta = { font:t.font, mono:t.mono, flat:t.flat, bevel:t.bevel };
     }
-    applyThemeVars(vars);
+    applyThemeVars(vars, meta);
     S.activeThemeId = id;
     highlightActiveSwatch(id);
     if(!skipSave) saveSettings();
