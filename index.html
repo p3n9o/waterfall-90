@@ -2531,9 +2531,9 @@
   }
 
   // Stops any image buffer (preview or TX) that's currently playing. Called
-  // before starting a new one, and from the tab-hidden/blur/panic handlers,
-  // so a transmission that was orphaned when the tab lost focus can never
-  // keep sounding underneath a freshly-started one.
+  // before starting a new one, and from the panic/clear-cache/pagehide
+  // handlers, so a leftover buffer can never keep sounding underneath a
+  // freshly-started one.
   function imgForceStop(){
     if(S.imgCurrentSource){
       try{ S.imgCurrentSource.onended = null; S.imgCurrentSource.stop(); }catch(e){}
@@ -2761,8 +2761,8 @@
 
   // Stops any CW tone currently sounding. Called before a new CW playback
   // starts (so re-pressing TX can never sound two tones/carriers at once)
-  // and from the tab-hidden/blur/panic handlers, so a keyed tone that was
-  // orphaned when the tab lost focus can't keep running under a new one.
+  // and from the panic/clear-cache/pagehide handlers, so a leftover tone
+  // can't keep running under a new one.
   function cwForceStop(){
     if(S.cw.currentSource){
       try{ S.cw.currentSource.onended = null; S.cw.currentSource.stop(); }catch(e){}
@@ -2977,15 +2977,19 @@
   pttBtn.addEventListener('touchstart', e=>{e.preventDefault(); enablePTT();});
   ['mouseup','mouseleave','touchend','touchcancel'].forEach(evt=> pttBtn.addEventListener(evt, disablePTT));
 
-  // Unified "stop every transmit path" routine. This is what closes the
-  // overlap/distortion bug: previously, losing focus (blur/tab hidden) only
-  // disengaged PTT — it never actually stopped the CW tone or image-mode
-  // buffer that was still playing, so those kept sounding in the background.
-  // Coming back and pressing TX again started a second buffer on top of the
-  // still-running first one, and the two overlapped into distortion (and,
-  // for CW specifically, two simultaneous tones instead of one clean
-  // carrier-like tone). Every TX source is now tracked and explicitly
-  // stopped here, so nothing can ever be left running unattended.
+  // Unified "stop every transmit path" routine — used by the Force PTT
+  // release button, Clear TX cache, a transmission's own natural end, and
+  // page unload. Every TX source is tracked and explicitly stopped here, so
+  // nothing can ever be left running under a freshly-started transmission.
+  //
+  // NOTE: this is intentionally NOT wired to blur/visibilitychange, nor to
+  // a page-wide mouseup/touchend listener. PTT now stays engaged while the
+  // tab is minimised/unfocused and while other controls or settings are
+  // being clicked/changed — it only disengages when a transmission finishes
+  // on its own, or the user hits Force PTT release (or Clear TX cache). If
+  // you ever want the old auto-disengage-on-blur safety net back, re-add:
+  //   window.addEventListener('blur', stopAllTx);
+  //   document.addEventListener('visibilitychange', ()=>{ if(document.hidden) stopAllTx(); });
   async function stopAllTx(){
     stopTune();
     cwForceStop();
@@ -2999,12 +3003,9 @@
     try{ if(S.catWriter) await catPTT(false); }catch(e){}
   }
 
-  window.addEventListener('mouseup', ()=>{ disablePTT(); stopVoiceTx(); });
-  window.addEventListener('touchend', ()=>{ disablePTT(); stopVoiceTx(); });
-  // Tab losing focus, being minimised, or switched away from — stop
-  // everything, not just PTT, so nothing keeps transmitting unattended.
-  window.addEventListener('blur', stopAllTx);
-  document.addEventListener('visibilitychange', ()=>{ if(document.hidden) stopAllTx(); });
+  // Page actually closing/navigating away (not just losing focus) still
+  // cleans up — once the page is gone there's no "transmission finishes on
+  // its own" left to fire, so this is the only remaining automatic stop.
   window.addEventListener('pagehide', stopAllTx);
 
   // Force PTT release — always visible in the PTT & drive panel (not just
