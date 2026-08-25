@@ -1,3 +1,13 @@
+<!--
+  Panel/dock UI in this file (drag-to-reorder, reorder arrows, resize
+  handles, and floating pop-out windows) is an original implementation
+  adapted from the interaction model of the UberSDR project
+  (madpsy/ka9q_ubersdr, https://github.com/madpsy/ka9q_ubersdr),
+  licensed GPL-3.0. No code from that project is copied verbatim —
+  this is a from-scratch implementation of the same general dock/
+  section/floating-window concept. If you redistribute this file,
+  keep this notice and the GPL-3.0 terms in mind for the adapted parts.
+-->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -68,10 +78,86 @@
   .view{display:none;padding:clamp(10px,1.6vw,18px) clamp(12px,2vw,20px) clamp(20px,4vw,40px);max-width:1800px;margin:0 auto;}
   .view.active{display:block;}
 
-  /* layout: radio view — fluid two-column, collapses to one column on narrow viewports */
-  .radio-grid{display:grid;grid-template-columns:minmax(230px,300px) minmax(0,1fr);gap:clamp(8px,1.2vw,16px);align-items:start;}
-  @media (max-width:900px){.radio-grid{grid-template-columns:1fr;}}
-  @media (min-width:1700px){.radio-grid{grid-template-columns:minmax(260px,340px) minmax(0,1fr);}}
+  /* ===================================================================
+     DOCK SHELL — fixed-viewport layout for the Radio view, adapted from
+     UberSDR's (madpsy/ka9q_ubersdr, GPL-3.0) left/right/bottom collapsible
+     dock concept. The page itself doesn't scroll while this view is
+     active; each dock's own body scrolls independently, so you scroll
+     through a panel's contents rather than through the whole page.
+     =================================================================== */
+  body.radio-active{height:100vh;overflow:hidden;display:flex;flex-direction:column;}
+  body.radio-active .topbar,
+  body.radio-active .browser-warning,
+  body.radio-active .tabs{flex:0 0 auto;}
+  body.radio-active #view-radio.active{
+    flex:1 1 auto;min-height:0;overflow:hidden;
+    display:flex;flex-direction:column;
+    max-width:none;margin:0;
+    padding:clamp(8px,1vw,14px) clamp(8px,1vw,14px) 0;
+  }
+
+  .dock-shell{
+    flex:1 1 auto;min-height:0;display:flex;gap:clamp(8px,1vw,14px);overflow:hidden;
+  }
+
+  .dock{
+    display:flex;flex-direction:column;flex:0 0 auto;
+    background:var(--panel);border:1px solid var(--line);border-radius:6px;
+    overflow:hidden;transition:width .15s ease, height .15s ease;
+  }
+  .dock--left,.dock--right{width:300px;}
+  @media (min-width:1700px){.dock--left,.dock--right{width:340px;}}
+  .dock--left.is-collapsed,.dock--right.is-collapsed{width:34px;}
+  .dock--bottom{width:100%;height:320px;margin-top:clamp(8px,1vw,14px);}
+  .dock--bottom.is-collapsed{height:34px;}
+
+  .dock__header{
+    display:flex;align-items:center;gap:8px;flex:0 0 auto;width:100%;
+    padding:9px 10px;background:var(--panel-2);border:none;border-bottom:1px solid var(--line);
+    font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--text-dim);cursor:pointer;text-align:left;
+  }
+  .dock__header:hover{color:var(--text);}
+  .dock__name{flex:1;white-space:nowrap;}
+  .dock--left.is-collapsed .dock__header,
+  .dock--right.is-collapsed .dock__header{
+    writing-mode:vertical-rl;height:100%;border-bottom:none;
+    border-right:1px solid var(--line);justify-content:flex-start;padding:10px 0;
+  }
+  .dock--right.is-collapsed .dock__header{border-right:none;border-left:1px solid var(--line);}
+  .dock--left.is-collapsed .dock__name,
+  .dock--right.is-collapsed .dock__name{writing-mode:vertical-rl;}
+  .dock__collapse{flex:none;transition:transform .15s;font-size:11px;}
+  .dock--left.is-collapsed .dock__collapse{transform:rotate(180deg);}
+  .dock--right.is-collapsed .dock__collapse{transform:rotate(180deg);}
+  .dock--bottom.is-collapsed .dock__collapse{transform:rotate(180deg);}
+
+  .dock__body{
+    flex:1 1 auto;min-height:0;min-width:0;overflow-y:auto;overflow-x:hidden;
+    padding:10px;
+  }
+  .dock.is-collapsed .dock__body{display:none;}
+  .dock__body > .rack{display:flex;flex-direction:column;gap:clamp(8px,1vw,14px);}
+
+  .dock-center{
+    flex:1 1 auto;min-height:0;min-width:0;
+    display:flex;flex-direction:column;overflow:hidden;
+    background:var(--panel);border:1px solid var(--line);border-radius:6px;
+  }
+  .dock-center .rack{height:100%;display:flex;flex-direction:column;overflow-y:auto;}
+
+  @media (max-width:900px){
+    body.radio-active{height:auto;overflow:visible;}
+    body.radio-active #view-radio.active{overflow:visible;}
+    .dock-shell{flex-direction:column;overflow:visible;}
+    .dock--left,.dock--right{width:100%;}
+    .dock--left.is-collapsed,.dock--right.is-collapsed{width:100%;height:34px;}
+    .dock--left.is-collapsed .dock__header,
+    .dock--right.is-collapsed .dock__header{writing-mode:horizontal-tb;height:auto;border:none;padding:9px 10px;}
+    .dock--left.is-collapsed .dock__name,
+    .dock--right.is-collapsed .dock__name{writing-mode:horizontal-tb;}
+    .dock-center{min-height:280px;}
+  }
 
   .panel{
     background:var(--panel);border:1px solid var(--line);border-radius:6px;
@@ -276,6 +362,112 @@
   .theme-reset-row{display:flex;gap:8px;margin-top:12px;}
   .theme-reset-row .btn{width:auto;flex:1;justify-content:center;}
 
+  /* ===================================================================
+     DOCKABLE PANEL CHROME — drag handle + close button injected into
+     every top-level panel header, a topbar "Panels" menu to reopen
+     closed ones, and drag-to-reorder between the two racks.
+     =================================================================== */
+  .panel > h3:not(.sub), .scope-head h3{ position:relative; }
+  .dock-controls{
+    display:inline-flex; align-items:center; gap:4px; margin-left:8px; flex:none;
+    font-family:var(--sans); order:2;
+  }
+  .panel > h3:not(.sub)::after, .scope-head h3::after{ order:1; }
+  .dock-grip, .dock-close{
+    width:18px;height:18px;flex:none;border:1px solid transparent;border-radius:3px;
+    background:none;color:var(--text-dim);display:flex;align-items:center;justify-content:center;
+    font-size:11px;line-height:1;cursor:pointer;transition:color .15s,border-color .15s,background .15s;
+  }
+  .dock-grip{cursor:grab;letter-spacing:-1px;}
+  .dock-grip:hover{color:var(--text);}
+  .dock-grip:active{cursor:grabbing;}
+  .dock-close:hover{color:var(--red);border-color:var(--red);background:rgba(255,107,94,.08);}
+  .dock-panel.dock-dragging{opacity:.4;}
+  .dock-panel.dock-hidden{display:none !important;}
+  .dock-drop-line{height:2px;background:var(--phosphor);border-radius:2px;margin:2px 0;box-shadow:0 0 6px var(--phosphor);}
+
+  /* order arrows (move panel up/down) + pop-out — sit alongside the
+     drag grip and close button */
+  .dock-order{display:inline-flex;gap:1px;}
+  .dock-order button{
+    width:16px;height:18px;flex:none;border:1px solid transparent;border-radius:3px;
+    background:none;color:var(--text-dim);display:flex;align-items:center;justify-content:center;
+    font-size:9px;line-height:1;cursor:pointer;
+  }
+  .dock-order button:hover:not(:disabled){color:var(--text);}
+  .dock-order button:disabled{opacity:.25;cursor:default;}
+  .dock-popout:hover{color:var(--teal);border-color:var(--teal);}
+
+  /* resize handle at the foot of each panel body — native vertical
+     resize, double-click resets to auto height. */
+  .dock-resize-wrap{resize:vertical;overflow:auto;min-height:60px;}
+  .dock-resize-hint{
+    text-align:center;font-family:var(--mono);font-size:8px;color:var(--text-dim);
+    opacity:.5;cursor:ns-resize;padding-top:2px;user-select:none;
+  }
+
+  /* floating pop-out windows */
+  .floatlayer{position:fixed;inset:0;pointer-events:none;z-index:100;}
+  .floatwin{
+    position:absolute;pointer-events:auto;background:var(--panel);border:1px solid var(--phosphor-dim);
+    border-radius:6px;box-shadow:0 12px 32px rgba(0,0,0,.5);min-width:260px;min-height:120px;
+    display:flex;flex-direction:column;resize:both;overflow:hidden;
+  }
+  .floatwin__head{
+    display:flex;align-items:center;gap:8px;padding:7px 10px;background:var(--panel-2);
+    border-bottom:1px solid var(--line);cursor:grab;flex:none;
+  }
+  .floatwin__head:active{cursor:grabbing;}
+  .floatwin__title{
+    font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;
+    color:var(--phosphor);flex:1;
+  }
+  .floatwin__btn{
+    width:18px;height:18px;flex:none;border:1px solid transparent;border-radius:3px;
+    background:none;color:var(--text-dim);display:flex;align-items:center;justify-content:center;
+    font-size:11px;cursor:pointer;
+  }
+  .floatwin__btn:hover{color:var(--text);}
+  .floatwin__body{flex:1;overflow:auto;padding:clamp(9px,1vw,14px);}
+  .floatwin__body > .panel, .floatwin__body > .scope-wrap{border:none;padding:0;}
+
+  .panels-menu-wrap{position:relative;}
+  .panels-menu-btn{
+    font-family:var(--mono);font-size:11px;letter-spacing:.03em;color:var(--text);
+    background:var(--panel-2);border:1px solid var(--line);border-radius:4px;
+    padding:5px 10px;cursor:pointer;display:flex;align-items:center;gap:6px;
+  }
+  .panels-menu-btn:hover{border-color:var(--phosphor-dim);color:var(--phosphor);}
+  .panels-menu-btn .badge{
+    background:var(--amber-dim);color:var(--amber);font-size:9px;border-radius:8px;
+    padding:1px 5px;line-height:1.4;
+  }
+  .panels-menu{
+    position:absolute;top:calc(100% + 6px);right:0;min-width:220px;background:var(--panel);
+    border:1px solid var(--line);border-radius:6px;box-shadow:0 8px 24px rgba(0,0,0,.4);
+    padding:8px;z-index:50;display:none;
+  }
+  .panels-menu.open{display:block;}
+  .panels-menu-item{
+    display:flex;align-items:center;justify-content:space-between;gap:10px;
+    font-family:var(--mono);font-size:11px;color:var(--text);padding:6px 8px;border-radius:4px;
+  }
+  .panels-menu-item:hover{background:var(--panel-2);}
+  .panels-menu-item button{
+    font-family:var(--mono);font-size:10px;background:var(--panel-2);border:1px solid var(--line);
+    color:var(--phosphor-dim);border-radius:3px;padding:3px 8px;cursor:pointer;
+  }
+  .panels-menu-item button:hover{color:var(--phosphor);border-color:var(--phosphor-dim);}
+  .panels-menu-item.is-hidden .panels-menu-item-name{color:var(--text-dim);}
+  .panels-menu-foot{
+    display:flex;margin-top:6px;padding-top:8px;border-top:1px solid var(--line);
+  }
+  .panels-menu-foot button{
+    width:100%;font-family:var(--mono);font-size:10px;background:none;border:1px solid var(--line);
+    color:var(--text-dim);border-radius:4px;padding:6px;cursor:pointer;
+  }
+  .panels-menu-foot button:hover{color:var(--phosphor);border-color:var(--phosphor-dim);}
+
   footer{
     text-align:center;font-family:var(--mono);font-size:10px;color:var(--text-dim);
     padding:20px 20px 36px;letter-spacing:.03em;
@@ -301,6 +493,11 @@
     <div class="status-chip"><span class="dot" id="dotAudioIn"></span>AUDIO IN</div>
     <div class="status-chip"><span class="dot" id="dotAudioOut"></span>AUDIO OUT</div>
     <div class="status-chip"><span class="dot" id="dotVoiceMic"></span>MIC</div>
+    <div class="status-chip" id="sessionChip" title="Time since this page was opened"><span>SESSION</span><span id="sessionTime" style="color:var(--text-dim);">00:00:00</span></div>
+    <div class="panels-menu-wrap">
+      <button class="panels-menu-btn" id="panelsMenuBtn">☰ Panels <span class="badge" id="panelsHiddenBadge" style="display:none;">0</span></button>
+      <div class="panels-menu" id="panelsMenu"></div>
+    </div>
   </div>
 </div>
 
@@ -315,9 +512,15 @@
 
 <!-- ===================== RADIO VIEW ===================== -->
 <div class="view active" id="view-radio">
-  <div class="radio-grid">
+  <div class="dock-shell">
 
-    <!-- left rack -->
+    <!-- left dock -->
+    <div class="dock dock--left" data-dock="left">
+      <button type="button" class="dock__header" data-dock-toggle="left" title="Collapse left panels">
+        <span class="dock__name">Left panels</span>
+        <span class="dock__collapse">◂</span>
+      </button>
+      <div class="dock__body">
     <div class="rack">
       <div class="panel">
         <h3>Connections</h3>
@@ -370,7 +573,48 @@
         <div class="hint">Digits shown as MHz.kHz.tens‑Hz. Scroll over a digit to tune it directly.</div>
         <div class="hint">Bands jump to the lower edge — verify against your own licence before TX.</div>
       </div>
+    </div><!-- /rack -->
+      </div><!-- /dock__body -->
+    </div><!-- /dock--left -->
 
+    <!-- center dock (waterfall — always visible, not collapsible) -->
+    <div class="dock-center">
+    <div class="rack">
+      <div class="scope-wrap">
+        <div class="scope-head">
+          <h3 style="margin:0;">Spectrum &amp; waterfall — receive<span id="scopeTxBadge" style="display:none;color:var(--red);font-family:var(--mono);font-size:10px;letter-spacing:.08em;margin-left:10px;">● TRANSMITTING</span></h3>
+          <div class="zoom-row">
+            <button class="zoom-btn" id="btnZoomOut" title="Widen passband">－</button>
+            <span class="span-readout" id="wfSpanReadout">2400 Hz span</span>
+            <button class="zoom-btn" id="btnZoomIn" title="Narrow passband">＋</button>
+            <div class="btn-row" style="width:auto;margin-left:8px;">
+              <button class="btn" id="btnStartWaterfall" style="width:auto;">▶ Start</button>
+            </div>
+          </div>
+        </div>
+        <canvas id="spectrumCanvas"></canvas>
+        <canvas id="waterfall"></canvas>
+        <div class="scope-freqs"><span id="wfMinLabel">300 Hz</span><span id="wfCenterLabel"></span><span id="wfMaxLabel">2700 Hz</span></div>
+        <div class="rx-audio-row">
+          <button class="btn" id="btnMonitorToggle">🔇 Listen (muted)</button>
+          <div class="vol-wrap">
+            <span>VOL</span>
+            <input type="range" id="monitorVolume" min="0" max="100" value="60">
+          </div>
+        </div>
+        <div class="hint" style="padding:0 12px 10px;">Plays RX audio through the device set in <b>Settings → Audio → Monitor speaker</b>.</div>
+      </div>
+    </div><!-- /rack -->
+    </div><!-- /dock-center -->
+
+    <!-- right dock -->
+    <div class="dock dock--right" data-dock="right">
+      <button type="button" class="dock__header" data-dock-toggle="right" title="Collapse right panels">
+        <span class="dock__collapse">▸</span>
+        <span class="dock__name">Right panels</span>
+      </button>
+      <div class="dock__body">
+    <div class="rack">
       <div class="panel">
         <h3>Antenna tuner, PTT &amp; TX</h3>
 
@@ -403,35 +647,20 @@
         <button class="btn btn-tune" id="btnTune">Transmit constant carrier (tune)</button>
         <div class="hint warn">Unmodulated tone, auto-cuts off (timeout in Settings). Low power only.</div>
       </div>
-    </div>
+    </div><!-- /rack -->
+      </div><!-- /dock__body -->
+    </div><!-- /dock--right -->
 
-    <!-- right: waterfall -->
-    <div>
-      <div class="scope-wrap">
-        <div class="scope-head">
-          <h3 style="margin:0;">Spectrum &amp; waterfall — receive<span id="scopeTxBadge" style="display:none;color:var(--red);font-family:var(--mono);font-size:10px;letter-spacing:.08em;margin-left:10px;">● TRANSMITTING</span></h3>
-          <div class="zoom-row">
-            <button class="zoom-btn" id="btnZoomOut" title="Widen passband">－</button>
-            <span class="span-readout" id="wfSpanReadout">2400 Hz span</span>
-            <button class="zoom-btn" id="btnZoomIn" title="Narrow passband">＋</button>
-            <div class="btn-row" style="width:auto;margin-left:8px;">
-              <button class="btn" id="btnStartWaterfall" style="width:auto;">▶ Start</button>
-            </div>
-          </div>
-        </div>
-        <canvas id="spectrumCanvas"></canvas>
-        <canvas id="waterfall"></canvas>
-        <div class="scope-freqs"><span id="wfMinLabel">300 Hz</span><span id="wfCenterLabel"></span><span id="wfMaxLabel">2700 Hz</span></div>
-        <div class="rx-audio-row">
-          <button class="btn" id="btnMonitorToggle">🔇 Listen (muted)</button>
-          <div class="vol-wrap">
-            <span>VOL</span>
-            <input type="range" id="monitorVolume" min="0" max="100" value="60">
-          </div>
-        </div>
-        <div class="hint" style="padding:0 12px 10px;">Plays RX audio through the device set in <b>Settings → Audio → Monitor speaker</b>.</div>
-      </div>
+  </div><!-- /dock-shell -->
 
+  <!-- bottom dock -->
+  <div class="dock dock--bottom" data-dock="bottom">
+    <button type="button" class="dock__header" data-dock-toggle="bottom" title="Collapse bottom panels">
+      <span class="dock__name">Bottom panels — Transmit</span>
+      <span class="dock__collapse">▾</span>
+    </button>
+    <div class="dock__body">
+    <div class="rack">
       <div class="panel" style="margin-top:14px;">
         <h3>Transmit</h3>
         <div class="subtab-row">
@@ -868,9 +1097,10 @@
           </details>
         </div>
       </div>
-    </div>
-  </div>
-</div>
+    </div><!-- /rack -->
+    </div><!-- /dock__body -->
+  </div><!-- /dock--bottom -->
+</div><!-- /view-radio -->
 
 <!-- ===================== SETTINGS VIEW ===================== -->
 <div class="view" id="view-settings">
@@ -1025,6 +1255,8 @@
 
 <footer>waterfall‑90 runs entirely client-side · Web Serial / WebHID / Web Audio · no data leaves this page · check your amateur licence conditions before transmitting</footer>
 
+<div class="floatlayer" id="floatLayer"></div>
+
 <script>
 (() => {
   'use strict';
@@ -1092,8 +1324,13 @@
       document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
       btn.classList.add('active');
       $('view-'+btn.dataset.tab).classList.add('active');
+      document.body.classList.toggle('radio-active', btn.dataset.tab === 'radio');
+      // Switching tabs changes the waterfall canvas's available size —
+      // resize on the next frame once the new layout has settled.
+      requestAnimationFrame(()=> window.dispatchEvent(new Event('resize')));
     });
   });
+  document.body.classList.toggle('radio-active', document.querySelector('.tab-btn.active')?.dataset.tab === 'radio');
 
   function setDot(id, state){ // state: 'off'|'warn'|'on'
     const d = $(id);
@@ -4015,6 +4252,11 @@
       {id:'mono-sepia', name:'Sepia',           vars:{bg:'#efe6d8',panel:'#f7f0e4',panel2:'#e8dcc6',line:'#cdbb9a',phosphor:'#5c4526',phosphorDim:'#8f7852',amber:'#7a5a2e',amberDim:'#a68b5f',red:'#8a4a3a',text:'#3a2c18',textDim:'#8a7a5c'}},
       {id:'mono-blue',  name:'Blue Monotone',   vars:{bg:'#0c1218',panel:'#121b23',panel2:'#17222c',line:'#2c4256',phosphor:'#a9d4ea',phosphorDim:'#4d7590',amber:'#a9d4ea',amberDim:'#4d7590',red:'#e0a0a0',text:'#dcedf5',textDim:'#7396ac'}},
     ],
+    'SDR Console': [
+      {id:'console-slate',  name:'Slate Console',  vars:{bg:'#0d1117',panel:'#151b23',panel2:'#1b232d',line:'#2c3947',phosphor:'#5ec9f0',phosphorDim:'#2c6b8a',amber:'#f0b64d',amberDim:'#8a6d2c',red:'#f0645e',text:'#e4ecf2',textDim:'#7f92a3'}},
+      {id:'console-navy',   name:'Navy Console',   vars:{bg:'#0a1220',panel:'#101c30',panel2:'#152439',line:'#28405c',phosphor:'#6fd9c5',phosphorDim:'#316b5f',amber:'#f2c14e',amberDim:'#8a6d2c',red:'#f0645e',text:'#e6edf5',textDim:'#7690ab'}},
+      {id:'console-steel',  name:'Steel Console',  vars:{bg:'#12161b',panel:'#1a1f26',panel2:'#20262e',line:'#343c46',phosphor:'#9fb4c7',phosphorDim:'#54687c',amber:'#e0a84f',amberDim:'#8a6d2c',red:'#e0645e',text:'#dde4ea',textDim:'#82909d'}},
+    ],
     'Simple': [
       {id:'simple-light', name:'Simple Light', vars:{bg:'#fafafa',panel:'#ffffff',panel2:'#f0f0f0',line:'#dddddd',phosphor:'#1a7f4b',phosphorDim:'#6cae8c',amber:'#c47a1f',amberDim:'#dba867',red:'#c0392b',text:'#222222',textDim:'#757575'}},
       {id:'simple-dark',  name:'Simple Dark',  vars:{bg:'#161616',panel:'#1e1e1e',panel2:'#262626',line:'#3a3a3a',phosphor:'#5fd98d',phosphorDim:'#357349',amber:'#e0b04a',amberDim:'#7d6027',red:'#e05c5c',text:'#e8e8e8',textDim:'#909090'}},
@@ -4309,6 +4551,369 @@
   }
 
   document.querySelectorAll('input[type="range"]').forEach(makeSliderTypable);
+
+  // =====================================================================
+  // DOCKABLE PANELS — drag-to-reorder, minimise (existing collapse-on-
+  // click-header behaviour), close, and reopen via the topbar "Panels"
+  // menu. Scoped to the Radio view's two racks; Settings stays a plain
+  // form page. Layout (order + which panels are closed) persists to
+  // localStorage separately from the rest of the app's settings so it
+  // can be reset on its own.
+  // =====================================================================
+  const DOCK_STORAGE_KEY = 'wf90_dockLayout_v2';
+  let dockDragEl = null;
+
+  function slugify(text){
+    return text.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'') || 'panel';
+  }
+
+  function dockHeaderFor(panelEl){
+    return panelEl.querySelector('h3');
+  }
+
+  // The header (h3) may be nested a level deep (e.g. inside .scope-head
+  // for the waterfall panel) — find the direct child of panelEl that
+  // contains it, so "everything after the header chrome" can be found
+  // correctly regardless of nesting.
+  function dockChromeChild(panelEl, header){
+    let node = header;
+    while(node && node.parentNode !== panelEl) node = node.parentNode;
+    return node;
+  }
+
+  function dockLabelFor(panelEl){
+    const h3 = dockHeaderFor(panelEl);
+    if(!h3) return 'Panel';
+    // Grab just the header's own direct text, ignoring the badge span etc.
+    let label = '';
+    h3.childNodes.forEach(n=>{
+      if(n.nodeType === Node.TEXT_NODE) label += n.textContent;
+    });
+    return label.trim() || h3.textContent.trim();
+  }
+
+  // ---------------------------------------------------------------------
+  // DOCK COLLAPSE — left/right/bottom docks collapse to a thin rail/strip,
+  // same idea as UberSDR's dock header chevrons. State persists per dock
+  // across reloads. Collapsing/expanding changes how much room the
+  // waterfall canvas has, so re-fire a resize once the CSS width/height
+  // transition has settled.
+  const DOCK_COLLAPSE_KEY = 'wf90_dockCollapse_v1';
+
+  function loadDockCollapseState(){
+    try{ return JSON.parse(localStorage.getItem(DOCK_COLLAPSE_KEY) || '{}'); }
+    catch(err){ return {}; }
+  }
+  function saveDockCollapseState(state){
+    try{ localStorage.setItem(DOCK_COLLAPSE_KEY, JSON.stringify(state)); }
+    catch(err){ console.warn('Could not save dock collapse state', err); }
+  }
+
+  function initDockCollapse(){
+    const state = loadDockCollapseState();
+    document.querySelectorAll('.dock[data-dock]').forEach(dock=>{
+      const which = dock.dataset.dock;
+      const header = dock.querySelector(':scope > .dock__header');
+      if(!header) return;
+
+      if(state[which]) dock.classList.add('is-collapsed');
+
+      header.addEventListener('click', ()=>{
+        const collapsed = dock.classList.toggle('is-collapsed');
+        const cur = loadDockCollapseState();
+        cur[which] = collapsed;
+        saveDockCollapseState(cur);
+        header.setAttribute('aria-expanded', String(!collapsed));
+        // Let the width/height transition finish before asking the
+        // waterfall canvas to measure its new box.
+        setTimeout(()=> window.dispatchEvent(new Event('resize')), 180);
+      });
+      header.setAttribute('aria-expanded', String(!dock.classList.contains('is-collapsed')));
+    });
+  }
+
+  function initDockablePanels(){
+    const racks = Array.from(document.querySelectorAll('.rack'));
+    const panels = [];
+
+    racks.forEach((rack, rackIdx)=>{
+      Array.from(rack.children).forEach(child=>{
+        if(!(child.classList.contains('panel') || child.classList.contains('scope-wrap'))) return;
+        child.classList.add('dock-panel');
+        const label = dockLabelFor(child);
+        child.dataset.dockId = slugify(label) + '-' + rackIdx;
+        panels.push(child);
+
+        const header = dockHeaderFor(child);
+        if(!header) return;
+        const controls = document.createElement('span');
+        controls.className = 'dock-controls';
+        controls.innerHTML = `
+          <span class="dock-order">
+            <button type="button" class="dock-up" title="Move panel up">▲</button>
+            <button type="button" class="dock-down" title="Move panel down">▼</button>
+          </span>
+          <button type="button" class="dock-grip" draggable="true" title="Drag to reorder">⠿</button>
+          <button type="button" class="dock-close dock-popout" title="Pop out into a floating window">⧉</button>
+          <button type="button" class="dock-close" title="Close panel">✕</button>`;
+        header.appendChild(controls);
+
+        const grip = controls.querySelector('.dock-grip');
+        const closeBtn = controls.querySelector('.dock-close:not(.dock-popout)');
+        const popoutBtn = controls.querySelector('.dock-popout');
+        const upBtn = controls.querySelector('.dock-up');
+        const downBtn = controls.querySelector('.dock-down');
+
+        // Grip clicks shouldn't also toggle the collapse behaviour bound
+        // to the header itself.
+        controls.addEventListener('click', e=> e.stopPropagation());
+
+        closeBtn.addEventListener('click', e=>{
+          e.stopPropagation();
+          child.classList.add('dock-hidden');
+          saveDockLayout();
+          renderPanelsMenu();
+          updateOrderButtons();
+        });
+
+        popoutBtn.addEventListener('click', e=>{
+          e.stopPropagation();
+          popOutPanel(child);
+        });
+
+        upBtn.addEventListener('click', e=>{
+          e.stopPropagation();
+          const prev = child.previousElementSibling;
+          if(prev) child.parentNode.insertBefore(child, prev);
+          saveDockLayout();
+          updateOrderButtons();
+        });
+        downBtn.addEventListener('click', e=>{
+          e.stopPropagation();
+          const next = child.nextElementSibling;
+          if(next) child.parentNode.insertBefore(next, child);
+          saveDockLayout();
+          updateOrderButtons();
+        });
+
+        // Native vertical resize on the panel body — double-click the
+        // hint strip at the foot resets to auto height. Wrap everything
+        // after the header's chrome (not just after the h3 itself, since
+        // for the waterfall panel the h3 sits nested inside .scope-head).
+        const chromeEl = dockChromeChild(child, header);
+        const body = document.createElement('div');
+        body.className = 'dock-resize-wrap';
+        while(chromeEl.nextSibling) body.appendChild(chromeEl.nextSibling);
+        child.appendChild(body);
+        const resizeHint = document.createElement('div');
+        resizeHint.className = 'dock-resize-hint';
+        resizeHint.textContent = '⋯ drag to resize, double-click to reset ⋯';
+        resizeHint.addEventListener('dblclick', ()=>{ body.style.height = 'auto'; });
+        child.appendChild(resizeHint);
+
+        grip.addEventListener('dragstart', e=>{
+          dockDragEl = child;
+          child.classList.add('dock-dragging');
+          e.dataTransfer.effectAllowed = 'move';
+          try{ e.dataTransfer.setData('text/plain', child.dataset.dockId); }catch(err){}
+        });
+        grip.addEventListener('dragend', ()=>{
+          child.classList.remove('dock-dragging');
+          dockDragEl = null;
+          saveDockLayout();
+          updateOrderButtons();
+        });
+      });
+
+      rack.addEventListener('dragover', e=>{
+        if(!dockDragEl) return;
+        e.preventDefault();
+        const after = Array.from(rack.querySelectorAll(':scope > .dock-panel:not(.dock-dragging)')).find(el=>{
+          const r = el.getBoundingClientRect();
+          return e.clientY < r.top + r.height/2;
+        });
+        if(after) rack.insertBefore(dockDragEl, after);
+        else rack.appendChild(dockDragEl);
+      });
+    });
+
+    S.dockPanels = panels;
+    loadDockLayout();
+    renderPanelsMenu();
+    updateOrderButtons();
+  }
+
+  // Disable the up-arrow on whichever panel is first in its rack, and the
+  // down-arrow on whichever is last — same idea as UberSDR's disabled
+  // "move panel left/right" arrows at the ends of a dock.
+  function updateOrderButtons(){
+    document.querySelectorAll('.rack').forEach(rack=>{
+      const visible = Array.from(rack.querySelectorAll(':scope > .dock-panel:not(.dock-hidden)'));
+      visible.forEach((p, i)=>{
+        const up = p.querySelector('.dock-up'), down = p.querySelector('.dock-down');
+        if(up) up.disabled = (i === 0);
+        if(down) down.disabled = (i === visible.length-1);
+      });
+    });
+  }
+
+  // Pop a panel out into its own floating, draggable/resizable window —
+  // same concept as UberSDR's floatwin/floatlayer system. Docking back
+  // moves the panel's real DOM node (including any canvases) straight
+  // back into its rack, so nothing is re-created or loses state.
+  function popOutPanel(panel){
+    const homeParent = panel.parentNode;
+    const homeNext = panel.nextSibling;
+    const label = dockLabelFor(panel);
+
+    const win = document.createElement('div');
+    win.className = 'floatwin';
+    win.style.left = '80px';
+    win.style.top = '80px';
+    win.style.width = Math.min(520, panel.getBoundingClientRect().width) + 'px';
+
+    const head = document.createElement('div');
+    head.className = 'floatwin__head';
+    head.innerHTML = `<span class="floatwin__title">${label}</span>
+      <button type="button" class="floatwin__btn" data-act="dock" title="Dock back into place">⇱</button>
+      <button type="button" class="floatwin__btn" data-act="close" title="Close">✕</button>`;
+
+    const body = document.createElement('div');
+    body.className = 'floatwin__body';
+    body.appendChild(panel);
+
+    win.appendChild(head);
+    win.appendChild(body);
+    $('floatLayer').appendChild(win);
+
+    function dockBack(){
+      homeParent.insertBefore(panel, homeNext);
+      win.remove();
+      saveDockLayout();
+      updateOrderButtons();
+    }
+    head.querySelector('[data-act="dock"]').addEventListener('click', dockBack);
+    head.querySelector('[data-act="close"]').addEventListener('click', ()=>{
+      panel.classList.add('dock-hidden');
+      dockBack();
+      renderPanelsMenu();
+    });
+
+    // Drag the window by its header.
+    let dragging = false, startX=0, startY=0, startLeft=0, startTop=0;
+    head.addEventListener('mousedown', e=>{
+      if(e.target.closest('.floatwin__btn')) return;
+      dragging = true;
+      startX = e.clientX; startY = e.clientY;
+      const r = win.getBoundingClientRect();
+      startLeft = r.left; startTop = r.top;
+      e.preventDefault();
+    });
+    window.addEventListener('mousemove', e=>{
+      if(!dragging) return;
+      win.style.left = (startLeft + e.clientX - startX) + 'px';
+      win.style.top = (startTop + e.clientY - startY) + 'px';
+    });
+    window.addEventListener('mouseup', ()=>{ dragging = false; });
+  }
+
+  function saveDockLayout(){
+    const racks = Array.from(document.querySelectorAll('.rack'));
+    const layout = racks.map(rack =>
+      Array.from(rack.querySelectorAll(':scope > .dock-panel')).map(p=>({
+        id: p.dataset.dockId, hidden: p.classList.contains('dock-hidden'),
+      }))
+    );
+    try{ localStorage.setItem(DOCK_STORAGE_KEY, JSON.stringify(layout)); }
+    catch(err){ console.warn('Could not save panel layout', err); }
+  }
+
+  function loadDockLayout(){
+    let layout = null;
+    try{ layout = JSON.parse(localStorage.getItem(DOCK_STORAGE_KEY) || 'null'); }
+    catch(err){ console.warn('Could not read saved panel layout', err); }
+    if(!layout) return;
+
+    const racks = Array.from(document.querySelectorAll('.rack'));
+    layout.forEach((rackLayout, rackIdx)=>{
+      const rack = racks[rackIdx];
+      if(!rack) return;
+      rackLayout.forEach(entry=>{
+        const panel = rack.querySelector(`:scope > .dock-panel[data-dock-id="${entry.id}"]`);
+        if(!panel) return;
+        rack.appendChild(panel); // re-append in saved order
+        panel.classList.toggle('dock-hidden', !!entry.hidden);
+      });
+    });
+  }
+
+  function renderPanelsMenu(){
+    const menu = $('panelsMenu');
+    if(!menu || !S.dockPanels) return;
+    menu.innerHTML = '';
+    let hiddenCount = 0;
+    S.dockPanels.forEach(panel=>{
+      const isHidden = panel.classList.contains('dock-hidden');
+      if(isHidden) hiddenCount++;
+      const item = document.createElement('div');
+      item.className = 'panels-menu-item' + (isHidden ? ' is-hidden' : '');
+      const name = document.createElement('span');
+      name.className = 'panels-menu-item-name';
+      name.textContent = dockLabelFor(panel);
+      const btn = document.createElement('button');
+      btn.textContent = isHidden ? 'Show' : 'Hide';
+      btn.addEventListener('click', ()=>{
+        panel.classList.toggle('dock-hidden');
+        saveDockLayout();
+        renderPanelsMenu();
+        updateOrderButtons();
+      });
+      item.appendChild(name);
+      item.appendChild(btn);
+      menu.appendChild(item);
+    });
+    const foot = document.createElement('div');
+    foot.className = 'panels-menu-foot';
+    const resetBtn = document.createElement('button');
+    resetBtn.textContent = 'Show all / reset order';
+    resetBtn.addEventListener('click', ()=>{
+      try{ localStorage.removeItem(DOCK_STORAGE_KEY); }catch(err){}
+      location.reload();
+    });
+    foot.appendChild(resetBtn);
+    menu.appendChild(foot);
+
+    const badge = $('panelsHiddenBadge');
+    if(badge){
+      badge.style.display = hiddenCount ? '' : 'none';
+      badge.textContent = String(hiddenCount);
+    }
+  }
+
+  $('panelsMenuBtn').addEventListener('click', e=>{
+    e.stopPropagation();
+    $('panelsMenu').classList.toggle('open');
+  });
+  document.addEventListener('click', e=>{
+    if(!e.target.closest('.panels-menu-wrap')) $('panelsMenu').classList.remove('open');
+  });
+
+  initDockablePanels();
+  initDockCollapse();
+
+  // Session timer — time since this page was opened (not persisted;
+  // resets on refresh, since a "session" ends when the page reloads).
+  const sessionStart = Date.now();
+  function updateSessionTimer(){
+    const s = Math.floor((Date.now()-sessionStart)/1000);
+    const hh = String(Math.floor(s/3600)).padStart(2,'0');
+    const mm = String(Math.floor((s%3600)/60)).padStart(2,'0');
+    const ss = String(s%60).padStart(2,'0');
+    const el = $('sessionTime');
+    if(el) el.textContent = `${hh}:${mm}:${ss}`;
+  }
+  updateSessionTimer();
+  setInterval(updateSessionTimer, 1000);
 
   renderThemeSwatches();
   initCustomPickers(DEFAULT_VARS);
