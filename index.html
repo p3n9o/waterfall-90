@@ -146,6 +146,19 @@
   }
   .dock-center .rack{height:100%;display:flex;flex-direction:column;overflow-y:auto;}
 
+  /* When the centre dock has no panels left in it (e.g. the spectrum/
+     waterfall panel's been closed and nothing else has been dragged
+     in), hide the now-empty centre column and let the left/right
+     docks grow to fill the freed space instead of leaving a gap. */
+  .dock-shell.center-empty .dock-center{display:none;}
+  @media (min-width:901px){
+    .dock-shell.center-empty .dock--left:not(.is-collapsed),
+    .dock-shell.center-empty .dock--right:not(.is-collapsed){
+      flex:1 1 0;
+      width:auto;
+    }
+  }
+
   @media (max-width:900px){
     body.radio-active{height:auto;overflow:visible;}
     body.radio-active #view-radio.active{overflow:visible;}
@@ -274,19 +287,33 @@
     border-bottom:1px solid var(--line);
   }
   .scope-head h3{margin:0;}
-  .scope-freqs{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;color:var(--text-dim);padding:3px 12px;}
+  /* frequency axis strip along the bottom of the waterfall — several
+     evenly spaced tick labels (not just min/centre/max), each with a
+     small tick mark above it, sitting on its own slightly-raised bar
+     so it reads as a ruler rather than a stray line of text. */
+  .scope-freqs{
+    display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;
+    color:var(--text-dim);padding:5px 10px 6px;background:var(--panel-2);border-top:1px solid var(--line);
+  }
+  .scope-freqs__tick{position:relative;padding-top:6px;white-space:nowrap;}
+  .scope-freqs__tick::before{
+    content:"";position:absolute;top:0;left:50%;width:1px;height:4px;
+    background:var(--text-dim);opacity:.6;transform:translateX(-50%);
+  }
+  .scope-freqs__tick:first-child::before{left:0;transform:none;}
+  .scope-freqs__tick:last-child::before{left:auto;right:0;transform:none;}
   .rx-audio-row{display:flex;align-items:center;gap:10px;padding:8px 12px;border-top:1px solid var(--line);}
   .rx-audio-row .btn{width:auto;flex:none;justify-content:center;padding:7px 12px;}
-  .rx-audio-row .vol-wrap{flex:1;display:flex;align-items:center;gap:8px;}
-  .rx-audio-row .vol-wrap span{font-family:var(--mono);font-size:9px;color:var(--text-dim);letter-spacing:.05em;}
-  .rx-audio-row .vol-wrap input[type=range]{flex:1;}
+  .zoom-row .vol-wrap{display:flex;align-items:center;gap:6px;margin-left:8px;}
+  .zoom-row .vol-wrap span{font-family:var(--mono);font-size:9px;color:var(--text-dim);letter-spacing:.05em;}
+  .zoom-row .vol-wrap input[type=range]{width:80px;}
   #waterfall{display:block;width:100%;height:clamp(200px,38vh,420px);background:#000;image-rendering:pixelated;}
   .scope-foot{display:flex;gap:8px;padding:8px 12px;border-top:1px solid var(--line);flex-wrap:wrap;}
   .scope-foot .btn{width:auto;flex:1;min-width:140px;justify-content:center;}
 
   /* spectrum line graph, sits above the waterfall like a classic SDR panadapter */
   #spectrumCanvas{display:block;width:100%;height:clamp(70px,14vh,130px);background:#04050a;border-bottom:1px solid var(--line);}
-  .zoom-row{display:flex;align-items:center;gap:4px;}
+  .zoom-row{display:flex;align-items:center;gap:4px;flex-wrap:wrap;row-gap:6px;}
   .zoom-btn{
     font-family:var(--mono);font-size:13px;font-weight:700;line-height:1;color:var(--text-dim);
     background:var(--panel-2);border:1px solid var(--line);border-radius:4px;width:26px;height:26px;
@@ -294,6 +321,34 @@
   }
   .zoom-btn:hover{border-color:var(--phosphor-dim);color:var(--phosphor);}
   .span-readout{font-family:var(--mono);font-size:10px;color:var(--text-dim);padding:0 4px;white-space:nowrap;}
+
+  /* the two scope canvases stacked in a positioned wrapper so the stats
+     overlay below can sit on top of them, pinned to a corner */
+  .scope-canvases{position:relative;}
+
+  /* small transparent stats HUD overlaid on the spectrum/waterfall,
+     the same idea as a classic WebSDR info box — frame rate, FFT
+     resolution, current span, local audio-pipeline throughput, which
+     of the CAT/PTT/audio links are connected, and RX audio pipeline
+     stats. Dismissible via its own corner ✕, reopened from the ⓘ
+     button up in the zoom row. */
+  .scope-stats{
+    position:absolute;top:8px;left:8px;z-index:5;min-width:148px;
+    background:rgba(6,8,14,.7);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);
+    border:1px solid rgba(255,255,255,.08);border-radius:6px;
+    padding:8px 10px 7px;font-family:var(--mono);font-size:10px;line-height:1.65;
+    pointer-events:none;
+  }
+  .scope-stats.is-hidden{display:none;}
+  .scope-stats__row{display:flex;justify-content:space-between;gap:16px;color:var(--text-dim);white-space:nowrap;}
+  .scope-stats__row b{color:#fff;font-weight:600;letter-spacing:.02em;}
+  .scope-stats__close{
+    position:absolute;top:-8px;right:-8px;width:18px;height:18px;border-radius:50%;
+    background:rgba(6,8,14,.9);border:1px solid rgba(255,255,255,.18);color:var(--text-dim);
+    display:flex;align-items:center;justify-content:center;font-size:9px;line-height:1;
+    cursor:pointer;pointer-events:auto;transition:color .15s,border-color .15s;
+  }
+  .scope-stats__close:hover{color:var(--red);border-color:var(--red);}
 
   /* collapsible top-level panels — click a non-".sub" h3 to fold the panel body away */
   .panel > h3:not(.sub){cursor:pointer;user-select:none;}
@@ -398,13 +453,22 @@
   .dock-order button:disabled{opacity:.25;cursor:default;}
   .dock-popout:hover{color:var(--teal);border-color:var(--teal);}
 
-  /* resize handle at the foot of each panel body — native vertical
-     resize, double-click resets to auto height. */
-  .dock-resize-wrap{resize:vertical;overflow:auto;min-height:60px;}
+  /* resize grab bar at the foot of each panel body — a full-width
+     draggable handle (mouse + touch), not just the browser's tiny
+     native corner-resize triangle. Double-click resets to auto height. */
+  .dock-resize-wrap{overflow:auto;min-height:60px;}
   .dock-resize-hint{
-    text-align:center;font-family:var(--mono);font-size:8px;color:var(--text-dim);
-    opacity:.5;cursor:ns-resize;padding-top:2px;user-select:none;
+    display:flex;align-items:center;justify-content:center;height:14px;flex:none;
+    cursor:ns-resize;user-select:none;touch-action:none;
+    border-top:1px solid var(--line);background:var(--panel-2);transition:background .15s;
   }
+  .dock-resize-hint:hover, .dock-resize-hint.is-resizing{background:var(--panel);}
+  .dock-resize-grip{
+    width:28px;height:3px;border-radius:2px;background:var(--text-dim);opacity:.5;
+    transition:opacity .15s,background .15s;
+  }
+  .dock-resize-hint:hover .dock-resize-grip,
+  .dock-resize-hint.is-resizing .dock-resize-grip{opacity:.9;background:var(--phosphor-dim);}
 
   /* floating pop-out windows */
   .floatlayer{position:fixed;inset:0;pointer-events:none;z-index:100;}
@@ -682,20 +746,30 @@
             <div class="btn-row" style="width:auto;margin-left:8px;">
               <button class="btn" id="btnStartWaterfall" style="width:auto;">▶ Start</button>
               <button class="btn" id="btnOpenRttyDecoder" style="width:auto;" title="Open the FSK / RTTY decoder tool window">FSK/RTTY RX</button>
+              <button class="btn" id="btnMonitorToggle" style="width:auto;">🔇 Listen (muted)</button>
             </div>
+            <div class="vol-wrap">
+              <span>VOL</span>
+              <input type="range" id="monitorVolume" min="0" max="100" value="60">
+            </div>
+            <button class="zoom-btn" id="btnToggleStats" title="Show/hide the stats overlay" style="margin-left:8px;">ⓘ</button>
           </div>
         </div>
-        <canvas id="spectrumCanvas"></canvas>
-        <canvas id="waterfall"></canvas>
-        <div class="scope-freqs"><span id="wfMinLabel">300 Hz</span><span id="wfCenterLabel"></span><span id="wfMaxLabel">2700 Hz</span></div>
-        <div class="rx-audio-row">
-          <button class="btn" id="btnMonitorToggle">🔇 Listen (muted)</button>
-          <div class="vol-wrap">
-            <span>VOL</span>
-            <input type="range" id="monitorVolume" min="0" max="100" value="60">
+        <div class="scope-canvases">
+          <canvas id="spectrumCanvas"></canvas>
+          <canvas id="waterfall"></canvas>
+          <div class="scope-stats" id="scopeStats">
+            <button type="button" class="scope-stats__close" id="scopeStatsClose" title="Hide stats overlay">✕</button>
+            <div class="scope-stats__row"><span>FPS</span><b id="statFps">0</b></div>
+            <div class="scope-stats__row"><span>FFT</span><b id="statFft">—</b></div>
+            <div class="scope-stats__row"><span>SPAN</span><b id="statSpan">—</b></div>
+            <div class="scope-stats__row"><span>NET</span><b id="statNet">—</b></div>
+            <div class="scope-stats__row"><span>LINKS</span><b id="statLinks">0/3</b></div>
+            <div class="scope-stats__row"><span>AUDIO</span><b id="statAudio">—</b></div>
           </div>
         </div>
-        <div class="hint" style="padding:0 12px 10px;">Plays RX audio through the device set in <b>Settings → Audio → Monitor speaker</b>.</div>
+        <div class="scope-freqs" id="scopeFreqs"></div>
+        <div class="hint" style="padding:8px 12px 10px;border-top:1px solid var(--line);">Plays RX audio through the device set in <b>Settings → Audio → Monitor speaker</b>.</div>
       </div>
     </div><!-- /rack -->
     </div><!-- /dock-center -->
@@ -1363,7 +1437,8 @@
     radioOut:null, radioOutUsesCtxSink:false, // shared "over the air" bus every TX path connects to
     monitorGain:null, monitorDest:null, monitorEl:null, monitorOn:false, monitorVolume:0.6, // RX audio listen-through
     previewDest:null, previewEl:null, // shared local-playback routing for Preview buttons & Numbers Station monitor
-    waterfall:{ gain:1.0, min:300, max:2700, speed:3, fft:2048, palette:'phosphor', running:false, floorDb:-100, ceilingDb:-30, persistence:0.15, invertDir:false },
+    waterfall:{ gain:1.0, min:300, max:2700, speed:3, fft:2048, palette:'phosphor', running:false, floorDb:-100, ceilingDb:-30, persistence:0.15, invertDir:false,
+      fps:0, fpsFrames:0, fpsLast:0, lastBinHz:0, lastBinCount:0 }, // live stats for the scope-stats overlay
     drive:0.2,
     pttMethod:'cat',
     tuning:false, tuneTimer:null, tuneOsc:null, tuneGain:null,
@@ -2797,6 +2872,21 @@
   window.addEventListener('resize', resizeSpecCanvas);
   resizeSpecCanvas();
 
+  // Keep both canvases' pixel buffers in sync with their actual on-screen
+  // box at all times — not just on a window resize. Flexbox already
+  // reflows the waterfall's box the instant the bottom dock (or the
+  // left/right docks, or this panel's own resize grab bar) opens,
+  // closes, or is dragged; without this the canvas buffer stays at its
+  // old resolution and the image looks stretched/squashed until the
+  // next real window resize fires.
+  if(window.ResizeObserver){
+    const scopeResizeObserver = new ResizeObserver(()=>{
+      resizeCanvas();
+      resizeSpecCanvas();
+    });
+    scopeResizeObserver.observe(canvas.parentElement);
+  }
+
   function drawSpectrum(freqDataArr, minBin, span, binHz){
     const w = specCanvas.width, h = specCanvas.height;
     sctx2.fillStyle = '#04050a';
@@ -2872,6 +2962,20 @@
     const minBin = Math.floor(S.waterfall.min / binHz);
     const maxBin = Math.min(freqData.length-1, Math.ceil(S.waterfall.max / binHz));
     const span = Math.max(1, maxBin-minBin);
+
+    // Live stats for the scope-stats overlay — frame rate (once-a-second
+    // rollup, same idea as the RTTY decoder window's own FPS counter)
+    // plus the FFT resolution actually in use right now.
+    S.waterfall.lastBinHz = binHz;
+    S.waterfall.lastBinCount = freqData.length;
+    S.waterfall.fpsFrames++;
+    const nowMs = performance.now();
+    if(!S.waterfall.fpsLast) S.waterfall.fpsLast = nowMs;
+    if(nowMs - S.waterfall.fpsLast >= 1000){
+      S.waterfall.fps = S.waterfall.fpsFrames;
+      S.waterfall.fpsFrames = 0;
+      S.waterfall.fpsLast = nowMs;
+    }
 
     drawSpectrum(freqData, minBin, span, binHz);
     updateRxLevelMeter(freqData, minBin, maxBin);
@@ -2956,12 +3060,25 @@
   });
 
   function updateFreqLabels(){
-    $('wfMinLabel').textContent = S.waterfall.min+' Hz';
-    $('wfMaxLabel').textContent = S.waterfall.max+' Hz';
-    $('wfCenterLabel').textContent = Math.round((S.waterfall.min+S.waterfall.max)/2)+' Hz';
     $('wfSpanReadout').textContent = Math.round(S.waterfall.max-S.waterfall.min)+' Hz span';
     $('wfMin').value = S.waterfall.min;
     $('wfMax').value = S.waterfall.max;
+
+    // Rebuild the frequency axis strip as several evenly spaced tick
+    // labels across the current span, rather than just min/centre/max.
+    const freqsEl = $('scopeFreqs');
+    if(freqsEl){
+      const TICK_COUNT = 5;
+      freqsEl.innerHTML = '';
+      for(let i=0;i<TICK_COUNT;i++){
+        const t = i/(TICK_COUNT-1);
+        const hz = Math.round(S.waterfall.min + t*(S.waterfall.max-S.waterfall.min));
+        const tick = document.createElement('span');
+        tick.className = 'scope-freqs__tick';
+        tick.textContent = hz+' Hz';
+        freqsEl.appendChild(tick);
+      }
+    }
   }
 
   // =====================================================================
@@ -2992,6 +3109,62 @@
   $('btnZoomOut').title = 'Decrease bandwidth (−100 Hz)';
   $('btnZoomIn').addEventListener('click', ()=> adjustBandwidth(+BW_STEP_HZ));
   $('btnZoomOut').addEventListener('click', ()=> adjustBandwidth(-BW_STEP_HZ));
+
+  // =====================================================================
+  // SCOPE STATS OVERLAY — a small transparent HUD over the top-left of
+  // the spectrum/waterfall, the same idea as a classic WebSDR info box:
+  // live frame rate + FFT resolution off the waterfall's own render
+  // loop, the current passband span, a rough local audio-pipeline
+  // throughput reading, how many of the CAT/PTT/audio links are
+  // connected, and the RX audio pipeline's latency/rate/channels.
+  // Dismissible via its own corner ✕; the ⓘ button up in the zoom row
+  // brings it back.
+  // =====================================================================
+  function updateScopeStats(){
+    const el = {
+      fps: $('statFps'), fft: $('statFft'), span: $('statSpan'),
+      net: $('statNet'), links: $('statLinks'), audio: $('statAudio'),
+    };
+    if(!el.fps) return;
+
+    el.fps.textContent = S.waterfall.running ? String(S.waterfall.fps) : '0';
+    el.fft.textContent = S.waterfall.lastBinCount
+      ? `${S.waterfall.lastBinCount} bins · ${S.waterfall.lastBinHz.toFixed(1)} Hz`
+      : '—';
+    el.span.textContent = Math.round(S.waterfall.max - S.waterfall.min) + ' Hz';
+
+    const sr = S.audioCtx ? S.audioCtx.sampleRate : 0;
+    // Rough 16-bit mono PCM throughput estimate for whichever of the RX
+    // monitor / TX drive paths are actually live right now — this app
+    // has no server feed, so this stands in for that reading as "how
+    // much audio the local pipeline is pushing".
+    const rxKBs = (S.audioCtx && S.waterfall.running) ? (sr*2/1024) : 0;
+    const txKBs = S.txPreviewActive ? (sr*2/1024) : 0;
+    el.net.textContent = sr
+      ? `${rxKBs.toFixed(1)} + ${txKBs.toFixed(1)} = ${(rxKBs+txKBs).toFixed(1)} kB/s`
+      : '—';
+
+    const linkCount = (S.port?1:0) + (S.hid?1:0) + (S.micStream?1:0);
+    el.links.textContent = `${linkCount}/3`;
+
+    if(S.audioCtx){
+      const latencyMs = Math.round(((S.audioCtx.outputLatency||S.audioCtx.baseLatency||0))*1000);
+      const track = S.micStream && S.micStream.getAudioTracks()[0];
+      const channels = (track && track.getSettings().channelCount) || 1;
+      el.audio.textContent = `${latencyMs} ms · ${Math.round(sr/1000)}K · ${channels}ch`;
+    } else {
+      el.audio.textContent = '—';
+    }
+  }
+  setInterval(updateScopeStats, 1000);
+  updateScopeStats();
+
+  $('scopeStatsClose').addEventListener('click', ()=>{
+    $('scopeStats').classList.add('is-hidden');
+  });
+  $('btnToggleStats').addEventListener('click', ()=>{
+    $('scopeStats').classList.toggle('is-hidden');
+  });
 
   // =====================================================================
   // RX LEVEL METER — the top-bar "RX" chip. Reads the peak bin magnitude
@@ -4816,6 +4989,23 @@
     });
   }
 
+  // When the centre dock's rack has no visible panels left in it, add
+  // .center-empty to the shell so the CSS above can hide the empty
+  // centre column and let the left/right docks expand into its space.
+  // A short delay before the resize nudge lets the width transition
+  // on the left/right docks finish before the waterfall/spectrum
+  // canvases (if any become visible again) measure their new box.
+  function updateCenterEmptyState(){
+    const centerRack = document.querySelector('.dock-center .rack');
+    const shell = document.querySelector('.dock-shell');
+    if(!centerRack || !shell) return;
+    const hasVisible = !!centerRack.querySelector(':scope > .dock-panel:not(.dock-hidden)');
+    const isEmpty = !hasVisible;
+    if(shell.classList.contains('center-empty') === isEmpty) return;
+    shell.classList.toggle('center-empty', isEmpty);
+    setTimeout(()=> window.dispatchEvent(new Event('resize')), 180);
+  }
+
   function initDockablePanels(){
     const racks = Array.from(document.querySelectorAll('.rack'));
     const panels = [];
@@ -4858,6 +5048,7 @@
           saveDockLayout();
           renderPanelsMenu();
           updateOrderButtons();
+          updateCenterEmptyState();
         });
 
         popoutBtn.addEventListener('click', e=>{
@@ -4880,10 +5071,11 @@
           updateOrderButtons();
         });
 
-        // Native vertical resize on the panel body — double-click the
-        // hint strip at the foot resets to auto height. Wrap everything
-        // after the header's chrome (not just after the h3 itself, since
-        // for the waterfall panel the h3 sits nested inside .scope-head).
+        // Resizable grab bar at the foot of the panel body — a real
+        // full-width drag handle, mouse or touch, double-click resets
+        // to auto height. Wrap everything after the header's chrome
+        // (not just after the h3 itself, since for the waterfall panel
+        // the h3 sits nested inside .scope-head).
         const chromeEl = dockChromeChild(child, header);
         const body = document.createElement('div');
         body.className = 'dock-resize-wrap';
@@ -4891,9 +5083,48 @@
         child.appendChild(body);
         const resizeHint = document.createElement('div');
         resizeHint.className = 'dock-resize-hint';
-        resizeHint.textContent = '⋯ drag to resize, double-click to reset ⋯';
-        resizeHint.addEventListener('dblclick', ()=>{ body.style.height = 'auto'; });
+        resizeHint.title = 'Drag to resize · double-click to reset';
+        resizeHint.innerHTML = '<span class="dock-resize-grip"></span>';
         child.appendChild(resizeHint);
+
+        let resizing = false, resizeStartY = 0, resizeStartH = 0;
+        const applyResize = clientY=>{
+          const h = Math.max(60, resizeStartH + (clientY - resizeStartY));
+          body.style.height = h + 'px';
+        };
+        resizeHint.addEventListener('mousedown', e=>{
+          resizing = true;
+          resizeStartY = e.clientY;
+          resizeStartH = body.getBoundingClientRect().height;
+          resizeHint.classList.add('is-resizing');
+          document.body.style.cursor = 'ns-resize';
+          e.preventDefault();
+        });
+        window.addEventListener('mousemove', e=>{
+          if(!resizing) return;
+          applyResize(e.clientY);
+        });
+        window.addEventListener('mouseup', ()=>{
+          if(!resizing) return;
+          resizing = false;
+          resizeHint.classList.remove('is-resizing');
+          document.body.style.cursor = '';
+        });
+        resizeHint.addEventListener('touchstart', e=>{
+          resizing = true;
+          resizeStartY = e.touches[0].clientY;
+          resizeStartH = body.getBoundingClientRect().height;
+          resizeHint.classList.add('is-resizing');
+        }, {passive:true});
+        resizeHint.addEventListener('touchmove', e=>{
+          if(!resizing) return;
+          applyResize(e.touches[0].clientY);
+        }, {passive:true});
+        resizeHint.addEventListener('touchend', ()=>{
+          resizing = false;
+          resizeHint.classList.remove('is-resizing');
+        });
+        resizeHint.addEventListener('dblclick', ()=>{ body.style.height = 'auto'; });
 
         grip.addEventListener('dragstart', e=>{
           dockDragEl = child;
@@ -4906,6 +5137,7 @@
           dockDragEl = null;
           saveDockLayout();
           updateOrderButtons();
+          updateCenterEmptyState();
         });
       });
 
@@ -4918,6 +5150,10 @@
         });
         if(after) rack.insertBefore(dockDragEl, after);
         else rack.appendChild(dockDragEl);
+        // A panel may have just been dragged into or out of the centre
+        // rack — keep the empty-centre state (and left/right widths) in
+        // sync live, not just once the drag ends.
+        updateCenterEmptyState();
       });
     });
 
@@ -4925,6 +5161,7 @@
     loadDockLayout();
     renderPanelsMenu();
     updateOrderButtons();
+    updateCenterEmptyState();
   }
 
   // Disable the up-arrow on whichever panel is first in its rack, and the
@@ -4969,12 +5206,16 @@
     win.appendChild(head);
     win.appendChild(body);
     $('floatLayer').appendChild(win);
+    // Popping out removes the panel's real DOM node from its rack, so
+    // if that rack was the centre one, treat it the same as closing it.
+    updateCenterEmptyState();
 
     function dockBack(){
       homeParent.insertBefore(panel, homeNext);
       win.remove();
       saveDockLayout();
       updateOrderButtons();
+      updateCenterEmptyState();
     }
     head.querySelector('[data-act="dock"]').addEventListener('click', dockBack);
     head.querySelector('[data-act="close"]').addEventListener('click', ()=>{
@@ -5051,6 +5292,7 @@
         saveDockLayout();
         renderPanelsMenu();
         updateOrderButtons();
+        updateCenterEmptyState();
       });
       item.appendChild(name);
       item.appendChild(btn);
