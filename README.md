@@ -61,7 +61,7 @@ waterfall‑90 turns a Chromium-based browser tab into a lightweight CAT/PTT/wat
 
 ## Requirements
 
-- A **Chromium-based desktop browser** (Chrome, Edge, or Opera) served over **HTTPS** (or `localhost`) for Web Serial and WebHID support.
+- A **Chromium-based desktop browser** (Chrome, Edge, or Opera - Brave is recommended) served over **HTTPS** (or `localhost`) for Web Serial and WebHID support.
 - A **Xiegu G90** transceiver and a **DE‑19** (or compatible CM108-style) digital interface, connected via USB.
 - Only one application can hold the CAT port or audio device at a time — close WSJT‑X, SDR Console, OmniRig, etc. before connecting here, or bridge through `rigctld`.
 
