@@ -676,9 +676,9 @@
         <div class="scope-head">
           <h3 style="margin:0;">Spectrum &amp; waterfall — receive<span id="scopeTxBadge" style="display:none;color:var(--red);font-family:var(--mono);font-size:10px;letter-spacing:.08em;margin-left:10px;">● TRANSMITTING</span></h3>
           <div class="zoom-row">
-            <button class="zoom-btn" id="btnZoomOut" title="Widen passband">－</button>
+            <button class="zoom-btn" id="btnZoomOut" title="Decrease bandwidth (−100 Hz)">－</button>
             <span class="span-readout" id="wfSpanReadout">2400 Hz span</span>
-            <button class="zoom-btn" id="btnZoomIn" title="Narrow passband">＋</button>
+            <button class="zoom-btn" id="btnZoomIn" title="Increase bandwidth (+100 Hz)">＋</button>
             <div class="btn-row" style="width:auto;margin-left:8px;">
               <button class="btn" id="btnStartWaterfall" style="width:auto;">▶ Start</button>
               <button class="btn" id="btnOpenRttyDecoder" style="width:auto;" title="Open the FSK / RTTY decoder tool window">FSK/RTTY RX</button>
@@ -1818,6 +1818,7 @@
       S.radioOut.connect(S.audioCtx.destination);
       S.radioOutUsesCtxSink = true;
 
+      if(typeof S.pendingMonitorOn === 'boolean'){ S.monitorOn = S.pendingMonitorOn; updateMonitorButton(); }
       S.monitorGain = S.audioCtx.createGain();
       S.monitorGain.gain.value = S.monitorOn ? S.monitorVolume : 0;
       S.micSource.connect(S.monitorGain);
@@ -1884,6 +1885,11 @@
       if(!restore(outSel, prevOut)){
         [...outSel.options].forEach(o=>{ if(/de-?19/i.test(o.textContent)) outSel.value=o.value; });
       }
+
+      // A saved device choice from a previous session wins over both the
+      // "keep whatever was picked this session" restore above and the
+      // DE-19 auto-pick — it's the most specific signal of user intent.
+      restoreDynamicSelects(['audioInSelect','audioOutSelect','audioMonitorSelect','audioPreviewSelect','nsOutputSelect','afOutputSelect']);
     }catch(err){ console.warn(err); }
   }
 
@@ -2001,6 +2007,7 @@
       const cur = sel.value;
       sel.innerHTML = ins.map(d=>`<option value="${d.deviceId}">${d.label||'Microphone'}</option>`).join('') || '<option value="">No microphones found</option>';
       if(cur && [...sel.options].some(o=>o.value===cur)) sel.value = cur;
+      restoreDynamicSelects(['voiceMicSelect']);
     }catch(err){ console.warn(err); }
   }
 
@@ -2256,6 +2263,7 @@
     });
     const enIdx = ns.voices.findIndex(v=>v.lang && v.lang.startsWith('en'));
     if(enIdx >= 0) sel.value = enIdx;
+    restoreDynamicSelects(['nsVoiceSelect']); // saved voice choice (by label) wins over the English-default guess above
   }
   nsLoadVoices();
   if('onvoiceschanged' in window.speechSynthesis){
@@ -2755,6 +2763,7 @@
     S.monitorOn = !S.monitorOn;
     S.monitorGain.gain.value = S.monitorOn ? S.monitorVolume : 0;
     updateMonitorButton();
+    saveSettings();
   });
   $('monitorVolume').addEventListener('input', e=>{
     S.monitorVolume = parseInt(e.target.value,10)/100;
@@ -2956,20 +2965,33 @@
   }
 
   // =====================================================================
-  // ZOOM IN/OUT — narrows or widens the passband shown by the spectrum +
-  // waterfall, keeping the same centre frequency. Just adjusts the same
-  // S.waterfall.min/max the Settings tab's numeric fields already drive.
+  // BANDWIDTH +/- — widens or narrows the passband shown by the spectrum +
+  // waterfall, keeping the same centre frequency, by a fixed 100 Hz of
+  // total span per click (not a multiplicative zoom). Just adjusts the
+  // same S.waterfall.min/max the Settings tab's numeric fields already
+  // drive.
+  //   ＋ (btnZoomIn)  → INCREASE bandwidth by 100 Hz
+  //   － (btnZoomOut) → DECREASE bandwidth by 100 Hz
+  // (Previously these were reversed — the ＋ button actually narrowed the
+  // passband and － widened it, exactly backwards from what the icons and
+  // labels promised.)
   // =====================================================================
-  function zoomSpectrum(factor){
+  const BW_STEP_HZ = 100; // 100 Hz per click, split evenly on each side of centre
+  const BW_MIN_SPAN_HZ = 100;
+  const BW_MAX_SPAN_HZ = 20000;
+  function adjustBandwidth(deltaHz){
     const center = (S.waterfall.min + S.waterfall.max)/2;
-    let halfSpan = (S.waterfall.max - S.waterfall.min)/2 * factor;
-    halfSpan = Math.max(75, Math.min(10000, halfSpan));
+    let halfSpan = (S.waterfall.max - S.waterfall.min)/2 + deltaHz/2;
+    halfSpan = Math.max(BW_MIN_SPAN_HZ/2, Math.min(BW_MAX_SPAN_HZ/2, halfSpan));
     S.waterfall.min = Math.max(0, Math.round(center - halfSpan));
     S.waterfall.max = Math.round(center + halfSpan);
     updateFreqLabels();
+    saveSettings();
   }
-  $('btnZoomIn').addEventListener('click', ()=> zoomSpectrum(0.7));
-  $('btnZoomOut').addEventListener('click', ()=> zoomSpectrum(1/0.7));
+  $('btnZoomIn').title = 'Increase bandwidth (+100 Hz)';
+  $('btnZoomOut').title = 'Decrease bandwidth (−100 Hz)';
+  $('btnZoomIn').addEventListener('click', ()=> adjustBandwidth(+BW_STEP_HZ));
+  $('btnZoomOut').addEventListener('click', ()=> adjustBandwidth(-BW_STEP_HZ));
 
   // =====================================================================
   // RX LEVEL METER — the top-bar "RX" chip. Reads the peak bin magnitude
@@ -4468,31 +4490,107 @@
 
   // =====================================================================
   // SETTINGS PERSISTENCE
+  //
+  // Every slider, dropdown and checkbox across every panel — plus the
+  // chosen audio devices — is written to localStorage on change and
+  // reapplied the next time this page loads.
+  //
+  // Two mechanisms:
+  //   - SIMPLE_SETTING_IDS: plain, statically-present controls (sliders,
+  //     numbers, checkboxes, static <select> lists). Saved/restored as
+  //     plain value/checked, and restoring one dispatches the same
+  //     input/change event a real interaction would, so every existing
+  //     live-update listener (labels, S.waterfall fields, derived tone
+  //     readouts, etc.) fires exactly as it always has.
+  //   - DYNAMIC_SETTING_IDS: <select> lists that are (re)built at runtime
+  //     from things outside our control — audio input/output devices via
+  //     enumerateDevices(), and TTS voices via speechSynthesis. The saved
+  //     choice might not exist in the list yet (or ever again, if a
+  //     device gets unplugged), so these are saved as {deviceId, label}
+  //     and re-applied by restoreDynamicSelects() every time the
+  //     relevant list is rebuilt — matching by id first, falling back to
+  //     the option's label if the underlying id rotated but the same
+  //     device/voice is still there under the same name.
+  //
+  // Deliberately NOT persisted: message/content boxes (text to send,
+  // uploaded images/audio, custom numbers-station clip packs — none of
+  // which survive a reload anyway) and radio mode (USB/LSB), since that
+  // sends a live CI‑V command and shouldn't fire at a radio that may not
+  // even be connected yet on page load.
   // =====================================================================
   const STORAGE_KEY = 'waterfall90-settings-v1';
 
+  const SIMPLE_SETTING_IDS = [
+    // Spectrum / waterfall display
+    'wfGain','wfMin','wfMax','wfSpeed','wfInvertDir','wfFft','wfPalette','wfFloorDb','wfCeilingDb','wfPersistence',
+    // TX chain / RX monitor
+    'driveSlider','txTailSlider','monitorVolume',
+    // Image / text TX
+    'imgCols','imgRows','imgFrame','imgGamma','imgFftSize','imgLogMap','imgDynRange','imgColSharp',
+    'imgInvert','imgFlipH','imgFlipV','imgDriveSlider',
+    // Voice TX
+    'voiceDriveSlider',
+    // Numbers station (parameters only — clip packs aren't persisted, see above)
+    'nsGroupSize','nsRate','nsPitch','nsVolume','nsDigitGap','nsPause','nsRepeats','nsDigitMode','nsPreamble',
+    'nsTxToRadio','nsDriveSlider','nsSpecGain','nsSpecZoom','nsSpecMin','nsSpecMax',
+    // Audio file TX
+    'afGainSlider','afPitch','afSpeed','afLoopCount',
+    // CW TX/RX
+    'cwWpm','cwFarnsworth','cwTone','cwRepeats','cwDriveSlider','cwDecodeFreq','cwDecodeWpm','cwSquelch',
+    // RTTY TX/RX (Transmit → RTTY panel)
+    'rttyBaud','rttyStopBits','rttyMark','rttyShift','rttyReverse','rttyUsos','rttyRepeats','rttyDriveSlider',
+    'rttyDecodeMark','rttyDecodeShift','rttyDecodeReverse','rttyDecodeBaud','rttyDecodeSquelch',
+    // CAT / PTT interface
+    'pttMethod','cm108Bit','catBaud','catFraming','civTo','civFrom',
+    // Tune
+    'tuneFreq','tuneTimeout',
+  ];
+
+  // <select> lists rebuilt at runtime from devices/voices — see comment above.
+  const DYNAMIC_SETTING_IDS = [
+    'audioInSelect','audioOutSelect','audioMonitorSelect','audioPreviewSelect',
+    'voiceMicSelect','nsOutputSelect','afOutputSelect','nsVoiceSelect',
+  ];
+
+  let savedDynamicChoices = {}; // id -> {deviceId, label}, populated from storage on load
+
+  function readFieldValue(el){
+    return el.type === 'checkbox' ? el.checked : el.value;
+  }
+  function writeFieldValue(id, value){
+    const el = $(id);
+    if(!el || value === undefined || value === null) return;
+    if(el.type === 'checkbox'){
+      el.checked = !!value;
+      el.dispatchEvent(new Event('change', {bubbles:true}));
+    } else if(el.tagName === 'SELECT'){
+      if(![...el.options].some(o=>o.value === String(value))) return; // option not present — leave as-is
+      el.value = value;
+      el.dispatchEvent(new Event('change', {bubbles:true}));
+    } else {
+      setRangeAndLabel(id, value); // range/number inputs — fires 'input' for live labels too
+    }
+  }
+
   function collectSettings(){
+    const fields = {};
+    SIMPLE_SETTING_IDS.forEach(id=>{
+      const el = $(id);
+      if(el) fields[id] = readFieldValue(el);
+    });
+    const devices = {};
+    DYNAMIC_SETTING_IDS.forEach(id=>{
+      const el = $(id);
+      if(!el || !el.value) return;
+      const opt = el.options[el.selectedIndex];
+      devices[id] = { deviceId: el.value, label: opt ? opt.textContent : '' };
+    });
     return {
       themeId: S.activeThemeId || 'default',
       customThemeVars: S.customThemeVars || null,
-      waterfall: S.waterfall,
-      drive: S.drive,
-      imgDrive: S.imgDrive,
-      txTailMs: S.txTailMs,
-      pttMethod: $('pttMethod').value,
-      cm108Bit: $('cm108Bit').value,
-      catBaud: $('catBaud').value,
-      catFraming: $('catFraming').value,
-      civTo: $('civTo').value,
-      civFrom: $('civFrom').value,
-      monitorVolume: S.monitorVolume,
-      img: {
-        cols: $('imgCols').value, rows: $('imgRows').value, frame: $('imgFrame').value,
-        gamma: $('imgGamma').value, fftSize: $('imgFftSize').value,
-        logMap: $('imgLogMap').checked, dynRange: $('imgDynRange').value,
-        colSharp: $('imgColSharp').value,
-      },
-      tune: { freq: $('tuneFreq').value, timeout: $('tuneTimeout').value },
+      fields,
+      devices,
+      monitorOn: !!S.monitorOn,
     };
   }
 
@@ -4508,6 +4606,24 @@
     el.dispatchEvent(new Event('input', {bubbles:true}));
   }
 
+  // Applies any saved dynamic-select choice that matches an option now
+  // present in that <select> (by id, falling back to label). Safe to call
+  // repeatedly — call again any time a device/voice list gets rebuilt.
+  function restoreDynamicSelects(ids){
+    (ids || DYNAMIC_SETTING_IDS).forEach(id=>{
+      const want = savedDynamicChoices[id];
+      const el = $(id);
+      if(!want || !el) return;
+      const options = [...el.options];
+      let match = options.find(o=>o.value === want.deviceId);
+      if(!match && want.label) match = options.find(o=>o.textContent === want.label);
+      if(match && el.value !== match.value){
+        el.value = match.value;
+        el.dispatchEvent(new Event('change', {bubbles:true}));
+      }
+    });
+  }
+
   function loadSettings(){
     let saved = null;
     try{ saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null'); }
@@ -4517,51 +4633,26 @@
     if(saved.customThemeVars){ S.customThemeVars = saved.customThemeVars; initCustomPickers(saved.customThemeVars); }
     if(saved.themeId) selectTheme(saved.themeId, true);
 
-    if(saved.waterfall){
-      Object.assign(S.waterfall, saved.waterfall);
-      setRangeAndLabel('wfGain', S.waterfall.gain);
-      $('wfMin').value = S.waterfall.min; $('wfMax').value = S.waterfall.max;
-      setRangeAndLabel('wfSpeed', S.waterfall.speed);
-      $('wfInvertDir').checked = !!S.waterfall.invertDir;
-      $('wfFft').value = S.waterfall.fft;
-      $('wfPalette').value = S.waterfall.palette;
-      if(typeof S.waterfall.floorDb === 'number') setRangeAndLabel('wfFloorDb', S.waterfall.floorDb);
-      if(typeof S.waterfall.ceilingDb === 'number') setRangeAndLabel('wfCeilingDb', S.waterfall.ceilingDb);
-      if(typeof S.waterfall.persistence === 'number') setRangeAndLabel('wfPersistence', S.waterfall.persistence);
-      updateFreqLabels();
-    }
-    if(typeof saved.drive === 'number') setRangeAndLabel('driveSlider', Math.round(saved.drive*100));
-    if(typeof saved.imgDrive === 'number') setRangeAndLabel('imgDriveSlider', Math.round(saved.imgDrive*100));
-    if(typeof saved.txTailMs === 'number') setRangeAndLabel('txTailSlider', saved.txTailMs);
-    if(saved.pttMethod){ $('pttMethod').value = saved.pttMethod; S.pttMethod = saved.pttMethod; }
-    if(saved.cm108Bit) $('cm108Bit').value = saved.cm108Bit;
-    if(saved.catBaud) $('catBaud').value = saved.catBaud;
-    if(saved.catFraming) $('catFraming').value = saved.catFraming;
-    if(saved.civTo) $('civTo').value = saved.civTo;
-    if(saved.civFrom) $('civFrom').value = saved.civFrom;
-    if(typeof saved.monitorVolume === 'number') setRangeAndLabel('monitorVolume', Math.round(saved.monitorVolume*100));
-    if(saved.img){
-      if(saved.img.rows) $('imgRows').value = saved.img.rows;
-      if(saved.img.cols) $('imgCols').value = saved.img.cols;
-      if(saved.img.frame) setRangeAndLabel('imgFrame', saved.img.frame);
-      if(saved.img.gamma) setRangeAndLabel('imgGamma', saved.img.gamma);
-      if(saved.img.fftSize) $('imgFftSize').value = saved.img.fftSize;
-      if(typeof saved.img.logMap === 'boolean') $('imgLogMap').checked = saved.img.logMap;
-      if(saved.img.dynRange) setRangeAndLabel('imgDynRange', saved.img.dynRange);
-      if(saved.img.colSharp) setRangeAndLabel('imgColSharp', saved.img.colSharp);
-      updateImgResolutionHint();
-    }
-    if(saved.tune){
-      if(saved.tune.freq) setRangeAndLabel('tuneFreq', saved.tune.freq);
-      if(saved.tune.timeout) setRangeAndLabel('tuneTimeout', saved.tune.timeout);
-    }
+    const fields = saved.fields || {};
+    SIMPLE_SETTING_IDS.forEach(id=>{
+      if(fields.hasOwnProperty(id)) writeFieldValue(id, fields[id]);
+    });
+    updateFreqLabels();
+    updateImgResolutionHint();
+
+    savedDynamicChoices = saved.devices || {};
+    restoreDynamicSelects(); // catches whatever's already in the lists; refreshDeviceList()/nsLoadVoices()/etc re-call this once their lists populate
+
+    // Applied once audio actually connects (see connectAudio()) rather
+    // than here, since S.monitorGain doesn't exist yet on page load.
+    if(typeof saved.monitorOn === 'boolean') S.pendingMonitorOn = saved.monitorOn;
   }
 
-  ['wfGain','wfMin','wfMax','wfSpeed','wfFft','wfPalette','wfFloorDb','wfCeilingDb','wfPersistence',
-   'driveSlider','imgDriveSlider','txTailSlider',
-   'pttMethod','cm108Bit','catBaud','catFraming','civTo','civFrom','monitorVolume',
-   'imgCols','imgRows','imgFrame','imgGamma','imgFftSize','imgLogMap','imgDynRange','imgColSharp',
-   'tuneFreq','tuneTimeout'].forEach(id=>{
+  SIMPLE_SETTING_IDS.forEach(id=>{
+    const el = $(id);
+    if(el) el.addEventListener('change', saveSettings);
+  });
+  DYNAMIC_SETTING_IDS.forEach(id=>{
     const el = $(id);
     if(el) el.addEventListener('change', saveSettings);
   });
@@ -5012,6 +5103,17 @@
   initCustomPickers(DEFAULT_VARS);
   selectTheme('default', true);
   loadSettings();
+
+  // Populate the device/voice dropdowns right away (not just after the
+  // user hits Connect) so a saved audio-device choice from a previous
+  // session shows up pre-selected as soon as the page loads, if that
+  // device is still present. enumerateDevices() doesn't need mic
+  // permission to run — it just won't have human-readable labels until
+  // permission's been granted at least once, in which case matching
+  // falls back to whatever the browser does give us.
+  refreshDeviceList();
+  refreshVoiceMicList();
+  nsLoadVoices();
 
   updateFreqLabels();
   updateVfoDisplay();
