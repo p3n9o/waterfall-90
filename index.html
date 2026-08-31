@@ -5364,43 +5364,543 @@
   updateMonitorButton();
 
   // =====================================================================
-  // FSK / RTTY DECODER — floating tool window
+  // FSK / RTTY DEMODULATOR ENGINE
   //
-  // A self-contained decoder, separate from the Radio → Transmit → RTTY
-  // "Receive" panel above (that one stays as-is). This one opens as its
-  // own draggable/resizable floating window on top of the waterfall, in
-  // the same spirit as a dedicated decoder utility: preset library,
-  // Centre/Shift/Baud/Framing controls (Mark = Centre − Shift/2, Space =
-  // Centre + Shift/2), a live tone histogram with Mark/Space markers, and
-  // a timestamped scrolling text log with copy/download/clear.
+  // Ported to JavaScript from madpsy/ka9q_ubersdr's server-side decoder
+  // (audio_extensions/fsk: biquad.go, ita2.go, ccir476.go, fsk_demod.go),
+  // https://github.com/madpsy/ka9q_ubersdr — GNU GPL v3.0. See LICENSE.TXT
+  // in that repository for the full license text; this file is likewise
+  // distributed under GPL-3.0 for this portion.
   //
-  // It shares the same Web Audio analyser (S.analyser) that the
-  // waterfall/CW/RTTY-panel decoders already use, so it works on whatever
-  // DE-19 audio-in is connected, independently of whether the waterfall
-  // display itself is running.
+  // The earlier version of this window used the browser's AnalyserNode
+  // (FFT magnitude, polled on a timer) as a stand-in for a real FSK
+  // demodulator. That has no real bit-timing recovery — it just watched
+  // whether the "mark" FFT bin looked louder than the "space" bin above a
+  // fixed threshold, then guessed bit edges from wall-clock time. It
+  // couldn't track drift or jitter, so on real air-noise it decoded
+  // garbage far more often than it decoded text.
+  //
+  // This replaces that with the same technique UberSDR runs server-side:
+  // narrow IIR bandpass filters isolate the mark/space tones directly
+  // from the raw audio; a biquad lowpass on their level difference gives
+  // a clean mark/space logic signal; a zero-crossing histogram tracks and
+  // corrects the bit clock (baud-rate PLL); and an async start-stop frame
+  // reader validates each character's start/stop bits before handing it
+  // to ITA2 (Baudot) or CCIR476 (NAVTEX/SITOR-B) decoding.
   // =====================================================================
-  const RTTY_DECODER_PRESETS = [
-    { label:'Ham RTTY — 170 Hz shift, 45.45 baud',        centre:2210, shift:170, baud:45.45, framing:'5N1.5', inverted:false },
-    { label:'Pinneberg DWD LW 147.3 kHz — 85 Hz, 50 baud',centre:1000, shift:85,  baud:50,    framing:'5N1.5', inverted:false },
-    { label:'DWD HF relay (DDH7/9, DDK9) — 450 Hz, 50 baud', centre:1000, shift:450, baud:50, framing:'5N1.5', inverted:false },
-    { label:'NAVTEX-style — 170 Hz, 100 baud',            centre:1000, shift:170, baud:100,   framing:'5N1.5', inverted:false },
-    { label:'Wide shift — 850 Hz, 75 baud',               centre:1500, shift:850, baud:75,    framing:'5N1',   inverted:false },
-    { label:'Custom',                                      centre:1000, shift:450, baud:50,    framing:'5N1.5', inverted:false },
-  ];
+
+  class RdBiQuad{
+    constructor(){ this.b0=0;this.b1=0;this.b2=0;this.a1=0;this.a2=0;this.x1=0;this.x2=0;this.y1=0;this.y2=0; }
+    configure(type, freq, sampleRate, q){
+      const omega = 2*Math.PI*freq/sampleRate;
+      const sinO = Math.sin(omega), cosO = Math.cos(omega);
+      const alpha = sinO/(2*q);
+      let b0,b1,b2,a0,a1,a2;
+      if(type==='lowpass'){
+        b0=(1-cosO)/2; b1=1-cosO; b2=(1-cosO)/2; a0=1+alpha; a1=-2*cosO; a2=1-alpha;
+      } else { // bandpass — the only two filter types this engine needs
+        b0=alpha; b1=0; b2=-alpha; a0=1+alpha; a1=-2*cosO; a2=1-alpha;
+      }
+      this.b0=b0/a0; this.b1=b1/a0; this.b2=b2/a0; this.a1=a1/a0; this.a2=a2/a0;
+    }
+    filter(input){
+      const out = this.b0*input + this.b1*this.x1 + this.b2*this.x2 - this.a1*this.y1 - this.a2*this.y2;
+      this.x2=this.x1; this.x1=input; this.y2=this.y1; this.y1=out;
+      return out;
+    }
+    reset(){ this.x1=this.x2=this.y1=this.y2=0; }
+  }
+
+  // ITA2/Baudot decoder (also handles the ASCII 7N1/8N1 direct-byte mode).
+  class RdITA2{
+    constructor(framing, asciiMode){
+      this.letters=0x1f; this.figures=0x1b;
+      this.firstChar=true; this.shift=false; this.lastCode=0;
+      this.asciiMode = !!asciiMode;
+      this.dataBits = 5;
+      let nbits;
+      if(framing && framing.length>=3 && framing[1]==='N'){
+        this.dataBits = parseInt(framing[0],10);
+        const stopStr = framing.slice(2);
+        const stopBits = (stopStr==='1.5') ? 1.5 : (stopStr==='2' ? 2 : 1);
+        const totalBits = 1 + this.dataBits + stopBits;
+        nbits = (stopBits===1.5) ? Math.round(totalBits*2) : Math.round(totalBits);
+      } else {
+        nbits = this.dataBits;
+      }
+      this.nbits = nbits;
+
+      const NUL='\x00', QUO="'", LF='\n', CR='\r', BEL='\x07', SH=null;
+      // US-TTY version of ITA2 (matches ka9q_ubersdr's table exactly)
+      this.ltrs = [NUL,'E',LF,'A',' ','S','I','U',CR,'D','R','J','N','F','C','K',
+                   'T','Z','L','W','H','Y','P','Q','O','B','G',SH,'M','X','V',SH];
+      this.figs = [NUL,'3',LF,'-',' ',BEL,'8','7',CR,'$','4',QUO,',','!',':','(',
+                   '5','"',')','2','#','6','0','1','9','?','&',SH,'.','/',';',SH];
+    }
+    getNBits(){ return this.nbits; }
+    getMSB(){ return 1 << (this.nbits-1); }
+    reset(){ this.shift=false; this.lastCode=0; this.firstChar=true; }
+
+    checkBits(code){
+      let v = code;
+      if(this.nbits===15){
+        if((v & 3) !== 0) return false;
+        v >>= 2;
+        for(let bit=0; bit<this.dataBits; bit++){
+          const d = v & 3;
+          if(d!==0 && d!==3) return false;
+          v >>= 2;
+        }
+        if((v & 7) !== 7) return false;
+        v >>= 3;
+        return v === 0;
+      }
+      if((v & 1) !== 0) return false; // start bit must be 0
+      v >>= 1;
+      v >>= this.dataBits;
+      const stopBits = this.nbits - 1 - this.dataBits;
+      const stopMask = (1<<stopBits) - 1;
+      return (v & stopMask) === stopMask;
+    }
+
+    codeToChar(code, shift){
+      const ch = shift ? this.figs[code] : this.ltrs[code];
+      return (ch===null || ch===undefined) ? null : ch;
+    }
+
+    // ITA2 processes the PREVIOUS character, since shift codes affect the
+    // NEXT character rather than themselves.
+    processChar(code){
+      if(this.asciiMode){
+        const dataByte = (code >> 1) & ((1<<this.dataBits)-1);
+        if((dataByte<=0x09) || (dataByte>=0x0B && dataByte<=0x0C) ||
+           (dataByte>=0x0E && dataByte<=0x1F) || dataByte>=0x7F){
+          return {char:null, tally:0};
+        }
+        return {char:String.fromCharCode(dataByte), tally:1};
+      }
+
+      let dataBits;
+      if(this.nbits===15){
+        let v = code >> 2;
+        dataBits = 0;
+        const dataMSB = 1 << (this.dataBits-1);
+        for(let bit=0; bit<this.dataBits; bit++){
+          const d = v & 3;
+          dataBits = (dataBits >>> 1) | (d!==0 ? dataMSB : 0);
+          v >>= 2;
+        }
+      } else {
+        dataBits = code & ((1<<this.dataBits)-1);
+      }
+
+      const result = {char:null, tally:0};
+      if(this.firstChar){
+        this.lastCode = dataBits; this.firstChar=false;
+        return result;
+      }
+      if(this.lastCode === this.letters){
+        this.shift = false;
+      } else if(this.lastCode === this.figures){
+        this.shift = true;
+      } else {
+        const ch = this.codeToChar(this.lastCode, this.shift);
+        if(ch !== null){ result.char = ch; result.tally = 1; }
+      }
+      this.lastCode = dataBits;
+      return result;
+    }
+  }
+
+  // CCIR476 (used by NAVTEX and SITOR-B): a 7-bit code with exactly four
+  // mark bits per character, sent twice (alpha phase + rep phase) so a
+  // single-bit error in either copy can be corrected against the other.
+  class RdCCIR476{
+    constructor(){
+      this.codeAlpha=0x0f; this.codeBeta=0x33; this.codeChar32=0x6a; this.codeRep=0x66;
+      this.letters=0x5a; this.figures=0x36;
+      this.shift=false; this.alphaPhase=false; this.c1=0; this.c2=0; this.c3=0;
+
+      const N=null;
+      this.ltrs = [
+        N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,
+        N,N,N,N,N,N,N,'J',N,N,N,'F',N,'C','K',N,
+        N,N,N,N,N,N,N,'W',N,N,N,'Y',N,'P','Q',N,
+        N,N,N,N,N,'G',N,N,N,'M','X',N,'V',N,N,N,
+        N,N,N,N,N,N,N,'A',N,N,N,'S',N,'I','U',N,
+        N,N,N,'D',N,'R','E',N,N,'N',N,N,' ',N,N,N,
+        N,N,N,'Z',N,'L',N,N,N,'H',N,N,'\n',N,N,N,
+        N,'O','B',N,'T',N,N,N,'\r',N,N,N,N,N,N,N,
+      ];
+      this.figs = [
+        N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,
+        N,N,N,N,N,N,N,"'",N,N,N,'!',N,':','(',N,
+        N,N,N,N,N,N,N,'2',N,N,N,'6',N,'0','1',N,
+        N,N,N,N,N,'&',N,N,N,'.','/',N,';',N,N,N,
+        N,N,N,N,N,N,N,'-',N,N,N,'\x07',N,'8','7',N,
+        N,N,N,'$',N,'4','3',N,N,',',N,N,' ',N,N,N,
+        N,N,N,'"',N,')',N,N,N,'#',N,N,'\n',N,N,N,
+        N,'9','?',N,'5',N,N,N,'\r',N,N,N,N,N,N,N,
+      ];
+      this.validCodes = new Array(128);
+      for(let code=0; code<128; code++) this.validCodes[code] = this.popcount(code)===4;
+    }
+    popcount(v){ let c=0; while(v){ c += v&1; v>>=1; } return c; }
+    reset(){ this.shift=false; this.alphaPhase=false; this.c1=this.c2=this.c3=0; }
+    getNBits(){ return 7; }
+    getMSB(){ return 0x40; }
+    checkBits(code){ return code<=0xFF && this.validCodes[code & 0x7F]; }
+
+    processChar(code){
+      const code7 = code & 0x7F;
+      const bitSuccess = this.validCodes[code7];
+      let tally = 0;
+      let chr = -1;
+
+      if(code7 === this.codeRep) this.alphaPhase = false;
+      else if(code7 === this.codeAlpha) this.alphaPhase = true;
+
+      if(!this.alphaPhase){
+        this.c1 = this.c2; this.c2 = this.c3; this.c3 = code7;
+      } else {
+        if(bitSuccess && this.c1 === code7) chr = code7;
+        else if(bitSuccess) chr = code7;
+        else if(this.validCodes[this.c1]) chr = this.c1;
+
+        if(chr === -1){
+          tally = -1;
+        } else {
+          tally = 1;
+          if(chr===this.codeRep || chr===this.codeAlpha || chr===this.codeBeta || chr===this.codeChar32){
+            this.alphaPhase = !this.alphaPhase;
+            return {char:null, bitSuccess, tally};
+          }
+          if(chr===this.letters){ this.shift=false; this.alphaPhase=!this.alphaPhase; return {char:null, bitSuccess, tally}; }
+          if(chr===this.figures){ this.shift=true; this.alphaPhase=!this.alphaPhase; return {char:null, bitSuccess, tally}; }
+          const ch = this.shift ? this.figs[chr] : this.ltrs[chr];
+          this.alphaPhase = !this.alphaPhase;
+          return {char: ch===null ? null : ch, bitSuccess, tally};
+        }
+      }
+      this.alphaPhase = !this.alphaPhase;
+      return {char:null, bitSuccess, tally};
+    }
+  }
+
+  const RD_STATE_NOSIGNAL=0, RD_STATE_SYNC1=1, RD_STATE_SYNC2=2, RD_STATE_READDATA=3;
+
+  // The demodulator proper: narrow mark/space bandpass filters feed a
+  // lowpass'd difference signal, a zero-crossing histogram recovers and
+  // corrects the bit clock, and an async start-stop state machine reads
+  // characters off that recovered clock.
+  class RdFSKDemodulator{
+    constructor(sampleRate, centerFreq, shiftHz, baudRate, framing, encoding, inverted){
+      this.sampleRate = sampleRate;
+      this.centerFrequency = centerFreq;
+      this.inverted = !!inverted;
+      this.deviationF = shiftHz/2;
+      this.audioAverageTC = 1000/sampleRate;
+      this.lowpassFilterF = 140.0;
+      this.audioMinimum = 256.0;
+      this.zeroCrossingSamples = 16;
+      this.zeroCrossingsDivisor = 4;
+
+      let baud = baudRate; if(baud<10) baud=10;
+      this.stopVariable = false;
+
+      if(encoding==='CCIR476'){
+        this.ccir476 = new RdCCIR476();
+        this.ita2 = null;
+        this.nbits = this.ccir476.getNBits();
+        this.msb = this.ccir476.getMSB();
+      } else {
+        this.ita2 = new RdITA2(framing, encoding==='ASCII');
+        this.ccir476 = null;
+        this.nbits = this.ita2.getNBits();
+        this.msb = this.ita2.getMSB();
+        if(framing==='5N1.5'){
+          // Oversample 1.5 stop bits by doubling the baud rate, exactly
+          // as the upstream Go decoder does for the same framing.
+          baud *= 2;
+          this.stopVariable = true;
+        }
+      }
+      this.baudRate = baud;
+
+      this.bitDurationSeconds = 1/this.baudRate;
+      this.bitSampleCount = Math.round(sampleRate*this.bitDurationSeconds);
+      this.halfBitSampleCount = Math.floor(this.bitSampleCount/2);
+
+      const buckets = Math.max(1, Math.ceil(this.bitSampleCount/this.zeroCrossingsDivisor));
+      this.zeroCrossings = new Array(buckets).fill(0);
+
+      this.biquadMark = new RdBiQuad();
+      this.biquadSpace = new RdBiQuad();
+      this.biquadLowpass = new RdBiQuad();
+      this.updateFilters();
+
+      this.state = RD_STATE_NOSIGNAL;
+      this.audioAverage = 0.1;
+      this.signalAccumulator = 0;
+      this.bitDuration = 0;
+      this.sampleCount = 0;
+      this.nextEventCount = 0;
+      this.averagedMarkState = false;
+      this.oldMarkState = false;
+      this.pulseEdgeEvent = false;
+      this.zeroCrossingCount = 0;
+      this.syncDelta = 0;
+      this.baudError = 0;
+
+      this.bitCount = 0;
+      this.codeBits = 0;
+      this.syncSetup = true;
+      this.syncChars = [];
+      this.validCount = 0;
+      this.errorCount = 0;
+      this.waiting = false;
+
+      this.succeedTally = 0;
+      this.failTally = 0;
+
+      this.baudErrorCB = null;
+      this.outputCB = null;
+      this.stateCB = null;
+    }
+
+    updateFilters(){
+      this.markSpaceFilterQ = 6.0 * this.centerFrequency / 1000.0;
+      const qv = this.centerFrequency + (4.0*1000.0/this.centerFrequency);
+      this.markF = qv + this.deviationF;
+      this.spaceF = qv - this.deviationF;
+      const invSqrt2 = 1/Math.sqrt(2);
+      this.biquadMark.configure('bandpass', this.markF, this.sampleRate, this.markSpaceFilterQ);
+      this.biquadSpace.configure('bandpass', this.spaceF, this.sampleRate, this.markSpaceFilterQ);
+      this.biquadLowpass.configure('lowpass', this.lowpassFilterF, this.sampleRate, invSqrt2);
+    }
+
+    setState(s){
+      if(s !== this.state){
+        this.state = s;
+        if(this.stateCB) this.stateCB(s);
+      }
+    }
+
+    processSamples(samples){
+      for(let n=0; n<samples.length; n++){
+        const dv = samples[n];
+        const markLevel = this.biquadMark.filter(dv);
+        const spaceLevel = this.biquadSpace.filter(dv);
+        const markAbs = Math.abs(markLevel);
+        const spaceAbs = Math.abs(spaceLevel);
+
+        const maxAbs = Math.max(markAbs, spaceAbs);
+        this.audioAverage += (maxAbs - this.audioAverage) * this.audioAverageTC;
+        this.audioAverage = Math.max(0.1, this.audioAverage);
+
+        const diffAbs = (markAbs - spaceAbs) / this.audioAverage;
+        const logicLevel = this.biquadLowpass.filter(diffAbs);
+
+        const markState = logicLevel > 0;
+        if(markState) this.signalAccumulator++; else this.signalAccumulator--;
+        this.bitDuration++;
+
+        if(markState !== this.oldMarkState){
+          if((this.bitDuration % this.bitSampleCount) > this.halfBitSampleCount){
+            let index = (this.sampleCount - this.nextEventCount + this.bitSampleCount*8) % this.bitSampleCount;
+            let bucket = Math.floor(index / this.zeroCrossingsDivisor);
+            if(bucket<0) bucket=0; else if(bucket>=this.zeroCrossings.length) bucket=this.zeroCrossings.length-1;
+            this.zeroCrossings[bucket]++;
+          }
+          this.bitDuration = 0;
+        }
+        this.oldMarkState = markState;
+
+        if(this.sampleCount % this.bitSampleCount === 0){
+          this.zeroCrossingCount++;
+          if(this.zeroCrossingCount >= this.zeroCrossingSamples){
+            let best=0, bestIndex=0;
+            for(let j=0;j<this.zeroCrossings.length;j++){
+              if(this.zeroCrossings[j] > best){ best=this.zeroCrossings[j]; bestIndex=j; }
+              this.zeroCrossings[j]=0;
+            }
+            if(best>0){
+              bestIndex *= this.zeroCrossingsDivisor;
+              bestIndex = ((bestIndex + this.halfBitSampleCount) % this.bitSampleCount) - this.halfBitSampleCount;
+              bestIndex = Math.trunc(bestIndex/8);
+              this.syncDelta = bestIndex;
+              this.baudError = bestIndex;
+              if(this.baudErrorCB) this.baudErrorCB(this.baudError);
+            }
+            this.zeroCrossingCount = 0;
+          }
+        }
+
+        this.pulseEdgeEvent = (this.sampleCount >= this.nextEventCount);
+        if(this.pulseEdgeEvent){
+          this.averagedMarkState = (this.signalAccumulator > 0) !== this.inverted;
+          this.signalAccumulator = 0;
+          this.nextEventCount = this.sampleCount + this.bitSampleCount + Math.round(this.syncDelta);
+          this.syncDelta = 0;
+        }
+
+        if(this.audioAverage < this.audioMinimum && this.state !== RD_STATE_NOSIGNAL){
+          this.setState(RD_STATE_NOSIGNAL);
+        } else if(this.state === RD_STATE_NOSIGNAL){
+          this.syncSetup = true;
+        }
+
+        if(!this.pulseEdgeEvent){ this.sampleCount++; continue; }
+
+        this.processBit(this.averagedMarkState);
+        this.sampleCount++;
+      }
+    }
+
+    processBit(bit){
+      const bitVal = bit ? 1 : 0;
+
+      if(this.syncSetup){
+        this.bitCount = 0;
+        this.codeBits = 0;
+        this.errorCount = 0;
+        this.validCount = 0;
+        if(this.ccir476) this.ccir476.reset();
+        if(this.ita2) this.ita2.reset();
+        this.syncChars = [];
+        this.setState(RD_STATE_SYNC1);
+        this.syncSetup = false;
+      }
+
+      switch(this.state){
+        case RD_STATE_NOSIGNAL:
+          break;
+
+        case RD_STATE_SYNC1: {
+          this.codeBits = (this.codeBits >>> 1) | (bitVal * this.msb);
+          const valid = this.ccir476 ? this.ccir476.checkBits(this.codeBits) : this.ita2.checkBits(this.codeBits);
+          if(valid){
+            this.syncChars.push(this.codeBits);
+            this.validCount++;
+            this.bitCount = 0;
+            this.codeBits = 0;
+            this.setState(RD_STATE_SYNC2);
+            this.waiting = true;
+          }
+          break;
+        }
+
+        case RD_STATE_SYNC2: {
+          if(this.stopVariable && this.waiting && bit) return;
+          this.waiting = false;
+          this.codeBits = (this.codeBits >>> 1) | (bitVal * this.msb);
+          this.bitCount++;
+          if(this.bitCount === this.nbits){
+            const valid = this.ccir476 ? this.ccir476.checkBits(this.codeBits) : this.ita2.checkBits(this.codeBits);
+            if(valid){
+              this.syncChars.push(this.codeBits);
+              this.codeBits = 0;
+              this.bitCount = 0;
+              this.validCount++;
+              const requiredChars = this.ita2 ? 1 : 4;
+              if(this.validCount >= requiredChars){
+                for(const code of this.syncChars) this.processCharacter(code);
+                this.setState(RD_STATE_READDATA);
+              }
+            } else {
+              this.codeBits = 0;
+              this.bitCount = 0;
+              this.syncSetup = true;
+            }
+            this.waiting = true;
+          }
+          break;
+        }
+
+        case RD_STATE_READDATA: {
+          if(this.stopVariable && this.waiting && bit) return;
+          this.waiting = false;
+          this.codeBits = (this.codeBits >>> 1) | (bitVal * this.msb);
+          this.bitCount++;
+          if(this.bitCount === this.nbits){
+            const success = this.processCharacter(this.codeBits);
+            if(success){
+              if(this.errorCount>0) this.errorCount--;
+            } else {
+              this.errorCount++;
+              if(this.errorCount>2) this.syncSetup = true;
+            }
+            this.codeBits = 0;
+            this.bitCount = 0;
+            this.waiting = true;
+          }
+          break;
+        }
+      }
+    }
+
+    processCharacter(code){
+      if(this.ccir476){
+        const r = this.ccir476.processChar(code);
+        if(r.char && this.outputCB) this.outputCB(r.char);
+        if(r.tally===1) this.succeedTally++; else if(r.tally===-1) this.failTally++;
+        return r.bitSuccess;
+      } else if(this.ita2){
+        const r = this.ita2.processChar(code);
+        if(r.char && this.outputCB) this.outputCB(r.char);
+        if(r.tally===1) this.succeedTally++;
+        return true; // ITA2 has no error correction, so always "successful"
+      }
+      return false;
+    }
+
+    reset(){
+      this.state = RD_STATE_NOSIGNAL;
+      this.syncSetup = true;
+      this.bitCount = 0;
+      this.codeBits = 0;
+      this.sampleCount = 0;
+      this.nextEventCount = 0;
+      this.signalAccumulator = 0;
+      this.audioAverage = 0.1;
+      if(this.ccir476) this.ccir476.reset();
+      if(this.ita2) this.ita2.reset();
+      this.biquadMark.reset();
+      this.biquadSpace.reset();
+      this.biquadLowpass.reset();
+    }
+  }
+
+  // =====================================================================
+  // FSK / RTTY DECODER — floating tool window (UI + audio plumbing)
+  //
+  // Feeds raw PCM straight off the DE-19 audio-in (S.micSource) into the
+  // RdFSKDemodulator above, rather than reading FFT snapshots off
+  // S.analyser — the demodulator needs a real time-domain sample stream
+  // to do bit-timing recovery, which frequency-bin magnitudes can't give
+  // it. A muted ScriptProcessorNode carries the samples; nothing audible
+  // changes for the operator.
+  // =====================================================================
+  const RTTY_DECODER_PRESETS = {
+    ham:       { label:'Ham RTTY — 170 Hz, 45.45 baud',  centre:1000, shift:170, baud:45.45, framing:'5N1.5', encoding:'ITA2',    inverted:false },
+    weather:   { label:'Weather RTTY — 450 Hz, 50 baud', centre:1000, shift:450, baud:50,    framing:'5N1.5', encoding:'ITA2',    inverted:true  },
+    navtex:    { label:'NAVTEX — 170 Hz, 100 baud',      centre:1000, shift:170, baud:100,   framing:'4/7',   encoding:'CCIR476', inverted:false },
+    'sitor-b': { label:'SITOR-B — 170 Hz, 100 baud',     centre:1000, shift:170, baud:100,   framing:'4/7',   encoding:'CCIR476', inverted:false },
+  };
 
   const RD = {
     win:null, body:null, listening:false,
-    frameActive:false, frameStartTime:0, frameBits:[], lastIsMark:true,
-    shiftState:'LTRS',
-    markHz:775, spaceHz:1225,
-    intervalId:null, specRAF:null,
+    demod:null, audioNode:null, muteGain:null, scratch:null,
+    markF:1000, spaceF:1170,
+    specRAF:null,
     lineStarted:false, lineBuffer:'', lineTimestamp:'', lastCharTime:0,
     lines:[], // {ts, text}
     level:0, sigOn:false, syncOn:false, decFlashUntil:0,
     baudErrPct:0,
     fps:0, fpsFrames:0, fpsLast:0,
+    applyingPreset:false,
     el:{}, // cached element refs for the currently-open window
-    data:null, // scratch Uint8Array reused across polls
+    data:null, // scratch Uint8Array reused for the spectrum-histogram draw
   };
 
   function rdFreqBin(freq){
@@ -5416,32 +5916,65 @@
     for(let b=Math.max(0,bin-1); b<=Math.min(data.length-1,bin+1); b++){ m+=data[b]; c++; }
     return c ? m/c : 0;
   }
-  function rdFramingStopBits(framing){
-    if(framing === '5N1') return 1;
-    if(framing === '5N2') return 2;
-    return 1.5; // 5N1.5 default
-  }
   function rdNowStamp(){
     const d = new Date();
     return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')+':'+String(d.getSeconds()).padStart(2,'0');
   }
+  // Mark/space labels for the tone histogram overlay. Once a demodulator
+  // is running, use the actual filter centre frequencies it computed
+  // (they're not simply centre±shift/2 — see updateFilters() above);
+  // otherwise fall back to the naive estimate for the pre-Start preview.
   function rdUpdateDerivedTones(){
+    if(RD.demod){
+      RD.markF = RD.demod.markF;
+      RD.spaceF = RD.demod.spaceF;
+      return;
+    }
     const el = RD.el;
     const centre = parseFloat(el.centre.value)||1000;
     const shift = parseFloat(el.shift.value)||170;
-    RD.markHz = centre - shift/2;
-    RD.spaceHz = centre + shift/2;
+    RD.markF = centre - shift/2;
+    RD.spaceF = centre + shift/2;
   }
 
-  function rdHandleCode(code){
-    if(code === RTTY_FIGS_CODE){ RD.shiftState = 'FIGS'; return; }
-    if(code === RTTY_LTRS_CODE){ RD.shiftState = 'LTRS'; return; }
-    const row = BAUDOT_TABLE[code];
-    const ch = RD.shiftState === 'FIGS' ? row.f : row.l;
+  // Builds a fresh RdFSKDemodulator from the window's current fields and
+  // wires its callbacks up to the log/meters. Called on Start and again
+  // whenever a setting changes while already listening.
+  function rdBuildDemod(){
+    const el = RD.el;
+    const centre = parseFloat(el.centre.value) || 1000;
+    const shift = parseFloat(el.shift.value) || 170;
+    const baud = parseFloat(el.baud.value) || 45.45;
+    const framing = el.framing.value;
+    const encoding = el.encoding.value;
+    const inverted = !!el.inverted.checked;
+    const sampleRate = S.audioCtx ? S.audioCtx.sampleRate : 48000;
+
+    const demod = new RdFSKDemodulator(sampleRate, centre, shift, baud, framing, encoding, inverted);
+    demod.outputCB = rdHandleChar;
+    demod.baudErrorCB = (err)=>{
+      RD.baudErrPct = Math.min(100, Math.abs(err) / Math.max(1, demod.halfBitSampleCount) * 100);
+    };
+    RD.demod = demod;
+    RD.markF = demod.markF;
+    RD.spaceF = demod.spaceF;
+  }
+  function rdRebuildDemod(){
+    if(RD.listening) rdBuildDemod();
+  }
+  // Any manual edit to a field switches the preset dropdown to "Custom"
+  // so it doesn't silently keep showing a preset name that no longer
+  // matches what's actually configured.
+  function rdMarkCustom(){
+    if(RD.applyingPreset) return;
+    if(RD.el.preset) RD.el.preset.value = 'custom';
+  }
+
+  function rdHandleChar(ch){
     RD.decFlashUntil = performance.now() + 250;
     if(ch === '\r') return; // bare CR — wait for the LF to actually break the line
     if(ch === '\n'){ rdFlushLine(); return; }
-    if(!ch || ch === '\0') return;
+    if(!ch || ch === '\x00') return;
     if(!RD.lineStarted){ RD.lineStarted = true; RD.lineTimestamp = rdNowStamp(); RD.lineBuffer = ''; }
     RD.lineBuffer += ch;
     RD.lastCharTime = performance.now();
@@ -5470,64 +6003,52 @@
     return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   }
 
-  function rdPoll(){
-    if(!RD.listening || !S.analyser) return;
-    if(!RD.data || RD.data.length !== S.analyser.frequencyBinCount){
-      RD.data = new Uint8Array(S.analyser.frequencyBinCount);
-    }
-    S.analyser.getByteFrequencyData(RD.data);
-
-    const inverted = RD.el.inverted.checked;
-    const baud = parseFloat(RD.el.baud.value) || 45.45;
-    const Tbit = 1000/baud;
-    const stop = rdFramingStopBits(RD.el.framing.value);
-
-    const markMag = rdMagAtFreq(RD.data, RD.markHz);
-    const spaceMag = rdMagAtFreq(RD.data, RD.spaceHz);
-    const curMarkMag = inverted ? spaceMag : markMag;
-    const curSpaceMag = inverted ? markMag : spaceMag;
-    const combined = Math.max(curMarkMag, curSpaceMag);
-    RD.level = combined/255;
-
-    const threshold = 22; // fixed floor above quantization noise — no exposed squelch control
-    const haveSignal = combined > threshold;
-    RD.sigOn = haveSignal;
-    const isMark = haveSignal ? (curMarkMag >= curSpaceMag) : true;
-    const now = performance.now();
-
-    if(!RD.frameActive){
-      if(RD.lastIsMark === true && isMark === false){
-        RD.frameActive = true;
-        RD.frameStartTime = now;
-        RD.frameBits = [];
-        RD.syncOn = true;
+  // Taps raw PCM off the same mic-in source the rest of the app already
+  // uses (S.micSource) via a ScriptProcessorNode, and feeds it sample by
+  // sample into the demodulator. The node is routed through a silent gain
+  // into the audio graph — ScriptProcessorNode only fires its callback
+  // while actually connected through to a destination, but a gain of 0
+  // means nothing audible changes for the operator.
+  //
+  // ScriptProcessorNode is deprecated in favour of AudioWorklet, but it
+  // keeps this a single self-contained HTML file with no extra module
+  // file to load, and the per-sample work here (three tiny IIR filters)
+  // is cheap enough that the main-thread execution model it uses isn't a
+  // practical concern.
+  function rdStartAudioTap(){
+    if(!S.audioCtx || !S.micSource) return false;
+    const bufSize = 4096;
+    const node = S.audioCtx.createScriptProcessor(bufSize, 1, 1);
+    node.onaudioprocess = (ev)=>{
+      if(!RD.demod) return;
+      const input = ev.inputBuffer.getChannelData(0);
+      if(!RD.scratch || RD.scratch.length !== input.length){
+        RD.scratch = new Float64Array(input.length);
       }
-    } else {
-      const elapsed = now - RD.frameStartTime;
-      const giveUpAt = Tbit*(1+5+stop)*2.2;
-      if(elapsed > giveUpAt){
-        RD.frameActive = false;
-      } else {
-        while(RD.frameBits.length < 5 && elapsed >= (1 + RD.frameBits.length + 0.5)*Tbit){
-          RD.frameBits.push(isMark ? 1 : 0);
-        }
-        const idealElapsed = (1 + 5 + stop*0.5)*Tbit;
-        if(RD.frameBits.length === 5 && elapsed >= idealElapsed){
-          const b = RD.frameBits;
-          const code = b[0]|(b[1]<<1)|(b[2]<<2)|(b[3]<<3)|(b[4]<<4);
-          rdHandleCode(code);
-          RD.baudErrPct = Math.max(0, Math.min(100, Math.abs(elapsed-idealElapsed)/Tbit*100));
-          RD.frameActive = false;
-        }
-      }
+      // Scale the Web Audio [-1,1] float samples up to roughly int16 PCM
+      // range — the ported engine's audioMinimum/signal-threshold
+      // constants assume that scale, same as the original Go decoder
+      // reading 16-bit samples straight off the radio.
+      for(let i=0;i<input.length;i++) RD.scratch[i] = input[i]*32767;
+      RD.demod.processSamples(RD.scratch);
+    };
+    const mute = S.audioCtx.createGain();
+    mute.gain.value = 0;
+    S.micSource.connect(node);
+    node.connect(mute);
+    mute.connect(S.audioCtx.destination);
+    RD.audioNode = node;
+    RD.muteGain = mute;
+    return true;
+  }
+  function rdStopAudioTap(){
+    if(RD.audioNode){
+      RD.audioNode.onaudioprocess = null;
+      try{ S.micSource && S.micSource.disconnect(RD.audioNode); }catch(e){}
+      try{ RD.audioNode.disconnect(); }catch(e){}
+      RD.audioNode = null;
     }
-    if(now - RD.frameStartTime > Tbit*3) RD.syncOn = RD.frameActive;
-    RD.lastIsMark = isMark;
-
-    // A line that's gone quiet (signal dropped mid-transmission) still
-    // gets flushed to the log after a couple of idle seconds, rather than
-    // sitting invisibly in the live buffer forever.
-    if(RD.lineStarted && (now - RD.lastCharTime) > 3000) rdFlushLine();
+    if(RD.muteGain){ try{ RD.muteGain.disconnect(); }catch(e){} RD.muteGain = null; }
   }
 
   function rdDrawHistogram(){
@@ -5542,6 +6063,18 @@
       RD.fps = RD.fpsFrames;
       RD.fpsFrames = 0;
       RD.fpsLast = nowMs;
+    }
+
+    // Pull lamp/level state from the running demodulator each frame —
+    // decoding itself happens in the audio callback, not here.
+    if(RD.demod){
+      RD.level = Math.min(1, RD.demod.audioAverage / 4000); // rough visual scale, not a calibrated meter
+      RD.sigOn = RD.demod.state !== RD_STATE_NOSIGNAL;
+      RD.syncOn = RD.demod.state === RD_STATE_READDATA;
+      // A line that's gone quiet (signal dropped mid-transmission) still
+      // gets flushed to the log after a couple of idle seconds, rather
+      // than sitting invisibly in the live buffer forever.
+      if(RD.lineStarted && (nowMs - RD.lastCharTime) > 3000) rdFlushLine();
     }
 
     if(!el.spectrum.checked){ rdUpdateFootbar(); return; }
@@ -5567,8 +6100,8 @@
         const v = RD.data[b]/255;
         const barH = v*ch;
         const freq = b*binHz;
-        const nearMark = Math.abs(freq-RD.markHz) < binHz*1.5;
-        const nearSpace = Math.abs(freq-RD.spaceHz) < binHz*1.5;
+        const nearMark = Math.abs(freq-RD.markF) < binHz*1.5;
+        const nearSpace = Math.abs(freq-RD.spaceF) < binHz*1.5;
         ctx.fillStyle = (nearMark||nearSpace) ? 'rgba(255,107,94,.85)' : 'rgba(255,180,84,.55)';
         ctx.fillRect(b*barW, ch-barH, Math.max(1,barW-0.5), barH);
       }
@@ -5586,8 +6119,8 @@
       ctx.fillText(Math.round(freq)+' Hz', Math.min(x+3, cw-70), 14);
       ctx.restore();
     }
-    marker(RD.markHz, 'Mark', '#5bd9c9');
-    marker(RD.spaceHz, 'Space', '#ffb454');
+    marker(RD.markF, 'Mark', '#5bd9c9');
+    marker(RD.spaceF, 'Space', '#ffb454');
 
     // axis ticks
     ctx.fillStyle = 'rgba(217,230,211,.4)'; ctx.font = '8px var(--mono), monospace';
@@ -5621,54 +6154,59 @@
 
     const now = performance.now();
     el.dotSig.classList.toggle('on', RD.sigOn);
-    el.dotSync.classList.toggle('on', RD.syncOn || RD.frameActive);
+    el.dotSync.classList.toggle('on', RD.syncOn);
     el.dotDec.classList.toggle('on', now < RD.decFlashUntil);
   }
 
   function rdApplyPreset(){
     const el = RD.el;
-    const idx = parseInt(el.preset.value, 10);
-    const p = RTTY_DECODER_PRESETS[idx];
-    if(!p) return;
+    const p = RTTY_DECODER_PRESETS[el.preset.value];
+    if(!p) return; // "Custom" — leave whatever the user already has set
+    RD.applyingPreset = true;
     el.centre.value = p.centre;
     el.shift.value = p.shift;
     el.baud.value = p.baud;
     el.framing.value = p.framing;
+    el.encoding.value = p.encoding;
     el.inverted.checked = !!p.inverted;
+    RD.applyingPreset = false;
     rdUpdateDerivedTones();
+    rdRebuildDemod();
   }
 
   function rdSetListening(on){
-    RD.listening = on;
     const el = RD.el;
-    el.badge.textContent = on ? 'RUNNING' : 'STOPPED';
-    el.badge.classList.toggle('stopped', !on);
-    el.stopBtn.textContent = on ? '■ Stop' : '▶ Start';
-    el.stopBtn.classList.toggle('is-stopped', !on);
-    clearInterval(RD.intervalId);
     if(on){
-      if(!S.analyser){
+      if(!S.audioCtx || !S.micSource){
         alert('Connect DE‑19 audio first (left panel) before decoding.');
-        RD.listening = false;
-        el.badge.textContent = 'STOPPED'; el.badge.classList.add('stopped');
-        el.stopBtn.textContent = '▶ Start'; el.stopBtn.classList.add('is-stopped');
         return;
       }
-      RD.frameActive = false; RD.frameBits = []; RD.lastIsMark = true;
-      RD.shiftState = 'LTRS'; RD.lineStarted = false; RD.lineBuffer = '';
+      RD.lineStarted = false; RD.lineBuffer = '';
+      rdBuildDemod();
+      if(!rdStartAudioTap()){
+        RD.demod = null;
+        alert('Could not attach the decoder to the audio graph.');
+        return;
+      }
+      RD.listening = true;
       rdUpdateDerivedTones();
-      // Polled on a fixed fast timer, same reasoning as the RTTY panel
-      // decoder above: bit periods are too short to resolve reliably
-      // against a ~60Hz animation frame.
-      RD.intervalId = setInterval(rdPoll, 5);
     } else {
+      RD.listening = false;
+      rdStopAudioTap();
       rdFlushLine();
-      RD.sigOn = false; RD.syncOn = false;
+      RD.demod = null;
+      RD.sigOn = false; RD.syncOn = false; RD.level = 0;
     }
+    el.badge.textContent = RD.listening ? 'RUNNING' : 'STOPPED';
+    el.badge.classList.toggle('stopped', !RD.listening);
+    el.stopBtn.textContent = RD.listening ? '■ Stop' : '▶ Start';
+    el.stopBtn.classList.toggle('is-stopped', !RD.listening);
   }
 
   function rdBuildWindowHtml(){
-    const presetOptions = RTTY_DECODER_PRESETS.map((p,i)=>`<option value="${i}"${i===1?' selected':''}>${p.label}</option>`).join('');
+    const presetOptions = Object.keys(RTTY_DECODER_PRESETS).map(k=>
+      `<option value="${k}"${k==='ham'?' selected':''}>${RTTY_DECODER_PRESETS[k].label}</option>`
+    ).join('') + `<option value="custom">Custom</option>`;
     return `
       <div class="rttydec">
         <div class="rttydec__sub">
@@ -5683,12 +6221,12 @@
           <select data-el="preset">${presetOptions}</select>
         </div>
         <div class="rttydec__grid">
-          <div><label>Centre</label><input type="number" data-el="centre" value="1000" step="5"></div>
-          <div><label>Shift</label><input type="number" data-el="shift" value="450" step="5"></div>
+          <div><label>Centre</label><input type="number" data-el="centre" value="1000" min="100" max="3000" step="5"></div>
+          <div><label>Shift</label><input type="number" data-el="shift" value="170" min="10" max="1000" step="5"></div>
           <div><label>Baud</label>
             <select data-el="baud">
-              <option value="45.45">45.45</option>
-              <option value="50" selected>50</option>
+              <option value="45.45" selected>45.45</option>
+              <option value="50">50</option>
               <option value="56.92">56.92</option>
               <option value="75">75</option>
               <option value="100">100</option>
@@ -5700,12 +6238,19 @@
               <option value="5N1">5N1</option>
               <option value="5N1.5" selected>5N1.5</option>
               <option value="5N2">5N2</option>
+              <option value="7N1">7N1</option>
+              <option value="8N1">8N1</option>
+              <option value="4/7">4/7</option>
             </select>
           </div>
         </div>
         <div class="rttydec__encrow">
           <label>Encoding</label>
-          <select data-el="encoding"><option value="ITA2" selected>ITA2</option></select>
+          <select data-el="encoding">
+            <option value="ITA2" selected>ITA2</option>
+            <option value="ASCII">ASCII</option>
+            <option value="CCIR476">CCIR476</option>
+          </select>
           <label class="rttydec__switch"><input type="checkbox" data-el="inverted"> Inverted</label>
         </div>
         <div class="rttydec__toggles">
@@ -5769,10 +6314,19 @@
     body.querySelectorAll('[data-el]').forEach(node=> el[node.dataset.el] = node);
     RD.el = el;
 
-    // wire preset + derived tones
+    // wire preset + derived tones. Any manual edit to a field (rather
+    // than picking it up via a preset) flips the preset selector to
+    // "Custom", and if the decoder's already running, rebuilds the
+    // demodulator on the spot with the new settings.
     el.preset.addEventListener('change', rdApplyPreset);
-    ['centre','shift'].forEach(k=> el[k].addEventListener('input', rdUpdateDerivedTones));
-    rdApplyPreset(); // seed with the default (Weather RTTY) preset
+    ['centre','shift'].forEach(k=> el[k].addEventListener('input', ()=>{
+      rdMarkCustom(); rdUpdateDerivedTones(); rdRebuildDemod();
+    }));
+    ['baud','framing','encoding'].forEach(k=> el[k].addEventListener('change', ()=>{
+      rdMarkCustom(); rdRebuildDemod();
+    }));
+    el.inverted.addEventListener('change', ()=>{ rdMarkCustom(); rdRebuildDemod(); });
+    rdApplyPreset(); // seed with the default (Ham RTTY) preset
 
     el.stopBtn.addEventListener('click', ()=> rdSetListening(!RD.listening));
     el.timestamp.addEventListener('change', ()=> rdRenderLog(false));
