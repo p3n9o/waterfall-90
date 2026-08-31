@@ -5138,11 +5138,12 @@
   // display itself is running.
   // =====================================================================
   const RTTY_DECODER_PRESETS = [
-    { label:'Ham RTTY — 170 Hz shift, 45.45 baud',   centre:2210, shift:170, baud:45.45, framing:'5N1.5', inverted:false },
-    { label:'Weather RTTY — 450 Hz, 50 baud',        centre:1000, shift:450, baud:50,    framing:'5N1.5', inverted:false },
-    { label:'NAVTEX-style — 170 Hz, 100 baud',       centre:1000, shift:170, baud:100,   framing:'5N1.5', inverted:false },
-    { label:'Wide shift — 850 Hz, 75 baud',          centre:1500, shift:850, baud:75,    framing:'5N1',   inverted:false },
-    { label:'Custom',                                 centre:1000, shift:450, baud:50,    framing:'5N1.5', inverted:false },
+    { label:'Ham RTTY — 170 Hz shift, 45.45 baud',        centre:2210, shift:170, baud:45.45, framing:'5N1.5', inverted:false },
+    { label:'Pinneberg DWD LW 147.3 kHz — 85 Hz, 50 baud',centre:1000, shift:85,  baud:50,    framing:'5N1.5', inverted:false },
+    { label:'DWD HF relay (DDH7/9, DDK9) — 450 Hz, 50 baud', centre:1000, shift:450, baud:50, framing:'5N1.5', inverted:false },
+    { label:'NAVTEX-style — 170 Hz, 100 baud',            centre:1000, shift:170, baud:100,   framing:'5N1.5', inverted:false },
+    { label:'Wide shift — 850 Hz, 75 baud',               centre:1500, shift:850, baud:75,    framing:'5N1',   inverted:false },
+    { label:'Custom',                                      centre:1000, shift:450, baud:50,    framing:'5N1.5', inverted:false },
   ];
 
   const RD = {
