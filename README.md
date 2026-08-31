@@ -67,7 +67,7 @@ waterfall‑90 turns a Chromium-based browser tab into a lightweight CAT/PTT/wat
 
 ## Getting started
 
-1. Open `index.html` in a supported browser (served over HTTPS, or opened locally where the browser permits it).
+1. Open `index.html` in a supported browser (served over HTTPS, or opened locally where the browser permits it) or just click on the following link: https://p3n9o.github.io/waterfall-90/ .
 2. On the **Radio** tab, connect **CAT** (Web Serial), your **PTT interface** (WebHID) if needed, and the **DE‑19 audio** device.
 3. Check **Settings** for your CAT baud rate/framing, CI‑V addresses, PTT method, and audio device selection — defaults match a stock G90/DE‑19 setup.
 4. Start the waterfall, tune your frequency, and transmit — either by holding the PTT button, sending an image/text as a waterfall picture, or keying a test carrier.
