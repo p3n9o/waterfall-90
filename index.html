@@ -5037,7 +5037,7 @@
   // =====================================================================
   const RTTY_DECODER_PRESETS = [
     { label:'Ham RTTY — 170 Hz shift, 45.45 baud',   centre:2210, shift:170, baud:45.45, framing:'5N1.5', inverted:false },
-    { label:'Weather RTTY — 450 Hz, 50 baud',        centre:1000, shift:450, baud:50,    framing:'5N1.5', inverted:true  },
+    { label:'Weather RTTY — 450 Hz, 50 baud',        centre:1000, shift:450, baud:50,    framing:'5N1.5', inverted:false },
     { label:'NAVTEX-style — 170 Hz, 100 baud',       centre:1000, shift:170, baud:100,   framing:'5N1.5', inverted:false },
     { label:'Wide shift — 850 Hz, 75 baud',          centre:1500, shift:850, baud:75,    framing:'5N1',   inverted:false },
     { label:'Custom',                                 centre:1000, shift:450, baud:50,    framing:'5N1.5', inverted:false },
@@ -5361,7 +5361,7 @@
         <div class="rttydec__encrow">
           <label>Encoding</label>
           <select data-el="encoding"><option value="ITA2" selected>ITA2</option></select>
-          <label class="rttydec__switch"><input type="checkbox" data-el="inverted" checked> Inverted</label>
+          <label class="rttydec__switch"><input type="checkbox" data-el="inverted"> Inverted</label>
         </div>
         <div class="rttydec__toggles">
           <label class="rttydec__switch"><input type="checkbox" data-el="timestamp" checked> Timestamp</label>
