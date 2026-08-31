@@ -2830,7 +2830,7 @@
 
   function updateMonitorButton(){
     const btn = $('btnMonitorToggle');
-    btn.textContent = S.monitorOn ? '🔊 Listening' : '🔇 Listen (muted)';
+    btn.textContent = S.monitorOn ? 'Mute' : 'Unmute';
     btn.classList.toggle('connected', S.monitorOn);
   }
   $('btnMonitorToggle').addEventListener('click', ()=>{
