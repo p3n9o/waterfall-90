@@ -684,6 +684,8 @@
      Web Audio analyser already used elsewhere in this file).
      ===================================================================== */
   .floatwin.rttydec-win{min-width:360px;min-height:200px;}
+  .floatwin.cwdec-win{min-width:340px;min-height:200px;}
+  .cwdec{display:flex;flex-direction:column;height:100%;}
   .rttydec{display:flex;flex-direction:column;height:100%;}
   .rttydec__sub{
     display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid var(--line);
@@ -1466,11 +1468,11 @@
               <span class="ext-row__summary">Not enabled on this receiver</span>
             </span>
           </button>
-          <button type="button" class="ext-row" disabled title="Not enabled on this receiver">
+          <button type="button" class="ext-row" id="btnOpenCwDecoder" title="Open the CW (Morse) decoder tool window">
             <span class="ext-row__icon">·–</span>
             <span class="ext-row__text">
               <span class="ext-row__title">CW Decoder</span>
-              <span class="ext-row__summary">Not enabled on this receiver</span>
+              <span class="ext-row__summary">Live Morse copy with auto speed tracking — no WPM to dial in.</span>
             </span>
           </button>
           <button type="button" class="ext-row" disabled title="Not enabled on this receiver">
@@ -6801,6 +6803,327 @@
   }
 
   $('btnOpenRttyDecoder').addEventListener('click', openRttyDecoderWindow);
+
+  // =====================================================================
+  // CW (MORSE) DECODER — extension window. Same floating-window shell and
+  // shared component styles (rttydec__*) as the FSK/RTTY decoder above,
+  // but a much simpler engine to match: CW is just on/off keying, so this
+  // polls S.analyser (like the built-in CW panel's own decode loop) rather
+  // than tapping raw PCM. The one real upgrade over that built-in panel is
+  // that speed isn't a dial the operator has to guess — dot length is
+  // tracked from the incoming keying and continuously re-estimated, so it
+  // follows the sender instead of needing a fixed WPM setting.
+  // =====================================================================
+  const CD = {
+    win:null, body:null, listening:false, rafId:null,
+    dotLen:70, // ms — adaptive running estimate of one dot's duration
+    decodeState:null, decodeStateStart:0, symbolBuffer:'',
+    lineStarted:false, lineBuffer:'', lineTimestamp:'', lastCharTime:0,
+    lines:[], // {ts, text}
+    level:0, sigOn:false, decFlashUntil:0,
+    data:null, // scratch Uint8Array reused for the tone magnitude read
+    el:{},
+  };
+
+  function cdFreqBin(freq){
+    if(!S.analyser || !S.audioCtx) return null;
+    const nyquist = S.audioCtx.sampleRate/2;
+    const binHz = nyquist/S.analyser.frequencyBinCount;
+    return Math.max(0, Math.min(S.analyser.frequencyBinCount-1, Math.round(freq/binHz)));
+  }
+  function cdMagAtFreq(data, freq){
+    const bin = cdFreqBin(freq);
+    if(bin===null) return 0;
+    let m=0,c=0;
+    for(let b=Math.max(0,bin-1); b<=Math.min(data.length-1,bin+1); b++){ m+=data[b]; c++; }
+    return c ? m/c : 0;
+  }
+
+  function cdHandleChar(ch){
+    CD.decFlashUntil = performance.now() + 250;
+    if(!CD.lineStarted){ CD.lineStarted = true; CD.lineTimestamp = rdNowStamp(); CD.lineBuffer = ''; }
+    CD.lineBuffer += ch;
+    CD.lastCharTime = performance.now();
+    cdRenderLog(true);
+  }
+  function cdFlushChar(){
+    if(!CD.symbolBuffer) return;
+    const ch = MORSE_REVERSE[CD.symbolBuffer] || '?';
+    CD.symbolBuffer = '';
+    cdHandleChar(ch);
+  }
+  function cdFlushLine(){
+    if(CD.lineStarted && CD.lineBuffer.length){
+      CD.lines.push({ts:CD.lineTimestamp, text:CD.lineBuffer});
+      if(CD.lines.length > 500) CD.lines.shift();
+    }
+    CD.lineStarted = false; CD.lineBuffer = '';
+    cdRenderLog(false);
+  }
+  function cdRenderLog(liveOnly){
+    if(!CD.el.log) return;
+    const showTs = CD.el.timestamp.checked;
+    const rows = CD.lines.map(l => (showTs ? `<span class="rd-line-ts">${l.ts}</span>` : '') + rdEscape(l.text));
+    if(CD.lineStarted){
+      rows.push((showTs ? `<span class="rd-line-ts">${CD.lineTimestamp}</span>` : '') + rdEscape(CD.lineBuffer));
+    }
+    CD.el.log.innerHTML = rows.length ? rows.join('\n') : '(listening…)';
+    if(CD.el.autoscroll.checked) CD.el.log.scrollTop = CD.el.log.scrollHeight;
+  }
+
+  // Scrolling keying trace — shifts the canvas 2px left every frame and
+  // draws a fresh column on the right whose height/brightness reflects
+  // whether the tone is on right now, so the dot/dash pattern reads like a
+  // strip-chart recorder rather than a single twitchy meter.
+  function cdDrawKeyingTrace(isOn, level){
+    const canvas = CD.el.hist;
+    if(!canvas) return;
+    const cw = canvas.clientWidth||400, ch = canvas.clientHeight||118;
+    const ctx = canvas.getContext('2d');
+    if(canvas.width !== cw || canvas.height !== ch){
+      canvas.width = cw; canvas.height = ch;
+      ctx.fillStyle = '#05060a'; ctx.fillRect(0,0,cw,ch);
+    }
+    const STEP = 2;
+    ctx.drawImage(canvas, STEP, 0, cw-STEP, ch, 0, 0, cw-STEP, ch);
+    ctx.fillStyle = '#05060a';
+    ctx.fillRect(cw-STEP, 0, STEP, ch);
+    if(isOn){
+      const barH = Math.max(2, level*ch);
+      ctx.fillStyle = 'rgba(255,180,84,.9)';
+      ctx.fillRect(cw-STEP, ch-barH, STEP, barH);
+    }
+    ctx.strokeStyle = 'rgba(217,230,211,.15)';
+    ctx.beginPath(); ctx.moveTo(0,ch-1); ctx.lineTo(cw,ch-1); ctx.stroke();
+  }
+
+  function cdUpdateFootbar(){
+    const el = CD.el;
+    if(!el.fSpeed) return;
+    el.fSpeed.textContent = Math.round(1200/CD.dotLen)+' WPM';
+    const now = performance.now();
+    el.dotSig.classList.toggle('on', CD.sigOn);
+    el.dotDec.classList.toggle('on', now < CD.decFlashUntil);
+  }
+
+  function cdLoop(){
+    if(!CD.listening) return;
+    CD.rafId = requestAnimationFrame(cdLoop);
+    if(!S.analyser || !S.audioCtx) return;
+    if(!CD.data || CD.data.length !== S.analyser.frequencyBinCount){
+      CD.data = new Uint8Array(S.analyser.frequencyBinCount);
+    }
+    S.analyser.getByteFrequencyData(CD.data);
+
+    const el = CD.el;
+    const toneHz = parseFloat(el.tone.value) || 600;
+    const mag = cdMagAtFreq(CD.data, toneHz);
+    CD.level = mag/255;
+    el.audioFill.style.width = Math.round(CD.level*100)+'%';
+    el.audioDb.textContent = (CD.level>0 ? Math.round(20*Math.log10(CD.level)) : -60)+' dB';
+
+    const thresholdVal = (parseFloat(el.squelch.value)/100)*255;
+    const isOn = mag > thresholdVal;
+    CD.sigOn = isOn;
+    const now = performance.now();
+
+    if(CD.decodeState === null){
+      CD.decodeState = isOn;
+      CD.decodeStateStart = now;
+    } else if(isOn !== CD.decodeState){
+      const durationMs = now - CD.decodeStateStart;
+      if(CD.decodeState === true){
+        // a mark (tone-on) just ended — classify dot/dash against the
+        // current adaptive estimate, then let that same measurement pull
+        // the estimate a little further toward the sender's actual speed.
+        const isDot = durationMs < CD.dotLen*2.2;
+        CD.symbolBuffer += (isDot ? '.' : '-');
+        CD.dotLen = isDot ? (CD.dotLen*0.7 + durationMs*0.3) : (CD.dotLen*0.9 + (durationMs/3)*0.1);
+        CD.dotLen = Math.max(20, Math.min(240, CD.dotLen));
+      } else {
+        // a space (tone-off) just ended
+        if(durationMs >= CD.dotLen*5){
+          cdFlushChar();
+          if(!CD.lineStarted){ CD.lineStarted = true; CD.lineTimestamp = rdNowStamp(); }
+          CD.lineBuffer += ' ';
+          cdRenderLog(true);
+        } else if(durationMs >= CD.dotLen*1.5){
+          cdFlushChar();
+        }
+      }
+      CD.decodeState = isOn;
+      CD.decodeStateStart = now;
+    } else if(!isOn){
+      const idleMs = now - CD.decodeStateStart;
+      if(idleMs > CD.dotLen*5 && CD.symbolBuffer) cdFlushChar();
+      if(CD.lineStarted && (now - CD.lastCharTime) > 3000) cdFlushLine();
+    }
+
+    cdUpdateFootbar();
+    if(el.spectrum.checked) cdDrawKeyingTrace(isOn, CD.level);
+  }
+
+  function cdSetListening(on){
+    const el = CD.el;
+    CD.listening = on;
+    if(on){
+      if(!S.analyser){ alert('Connect DE‑19 audio first (left panel).'); CD.listening = false; }
+      else{ CD.decodeState = null; CD.symbolBuffer = ''; cdLoop(); }
+    } else {
+      cancelAnimationFrame(CD.rafId);
+    }
+    el.badge.textContent = CD.listening ? 'RUNNING' : 'STOPPED';
+    el.badge.classList.toggle('stopped', !CD.listening);
+    el.stopBtn.textContent = CD.listening ? '■ Stop' : '▶ Start';
+    el.stopBtn.classList.toggle('is-stopped', !CD.listening);
+  }
+
+  function cdBuildWindowHtml(){
+    return `
+      <div class="cwdec">
+        <div class="rttydec__sub">
+          <span class="rttydec__badge stopped" data-el="badge">STOPPED</span>
+          <button type="button" class="rttydec__stopbtn is-stopped" data-el="stopBtn">▶ Start</button>
+          <span style="flex:1;"></span>
+          <button type="button" class="rttydec__iconbtn" data-act="copy" title="Copy decoded text">⧉</button>
+          <button type="button" class="rttydec__iconbtn" data-act="download" title="Download decoded text">⇩</button>
+          <button type="button" class="rttydec__iconbtn" data-act="clear" title="Clear log">🗑</button>
+        </div>
+        <div class="rttydec__grid" style="grid-template-columns:1fr 1fr 1fr;">
+          <div><label>Tone</label><input type="number" data-el="tone" value="600" min="200" max="1200" step="5"></div>
+          <div><label>Squelch %</label><input type="number" data-el="squelch" value="35" min="0" max="100" step="1"></div>
+          <div><label>Preset</label>
+            <select data-el="preset">
+              <option value="">—</option>
+              <option value="400">400 Hz</option>
+              <option value="500">500 Hz</option>
+              <option value="600" selected>600 Hz</option>
+              <option value="700">700 Hz</option>
+              <option value="800">800 Hz</option>
+            </select>
+          </div>
+        </div>
+        <div class="rttydec__encrow">
+          <button type="button" class="rttydec__iconbtn" data-act="syncTx" title="Match the Radio → CW tab's TX tone">↳ TX tone</button>
+          <button type="button" class="rttydec__iconbtn" data-act="syncRx" title="Match the Radio → CW tab's listen frequency">↳ RX tone</button>
+          <span style="flex:1;"></span>
+          <span style="font-family:var(--mono);font-size:9px;color:var(--text-dim);">Speed tracks automatically</span>
+        </div>
+        <div class="rttydec__toggles">
+          <label class="rttydec__switch"><input type="checkbox" data-el="timestamp" checked> Timestamp</label>
+          <label class="rttydec__switch"><input type="checkbox" data-el="autoscroll" checked> Auto-scroll</label>
+          <label class="rttydec__switch"><input type="checkbox" data-el="spectrum" checked> Keying trace</label>
+        </div>
+        <div class="rttydec__specwrap">
+          <canvas class="rttydec__hist" data-el="hist"></canvas>
+        </div>
+        <div class="rttydec__log" data-el="log">(listening…)</div>
+        <div class="rttydec__footbar">
+          <div class="rttydec__dots">
+            <span class="rttydec__dotitem"><span class="rttydec__dot sig" data-el="dotSig"></span>SIGNAL</span>
+            <span class="rttydec__dotitem"><span class="rttydec__dot dec" data-el="dotDec"></span>DECODE</span>
+          </div>
+          <div class="rttydec__stats">
+            <span>SPEED <b data-el="fSpeed">— WPM</b></span>
+            <span class="rttydec__audiobar"><span class="bar"><span class="fill" data-el="audioFill"></span></span><b data-el="audioDb">-60 dB</b></span>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  function openCwDecoderWindow(){
+    if(CD.win){
+      CD.win.style.zIndex = 200;
+      return;
+    }
+    const win = document.createElement('div');
+    win.className = 'floatwin cwdec-win';
+    win.style.left = '120px';
+    win.style.top = '100px';
+    win.style.width = '420px';
+    win.style.height = '520px';
+
+    const head = document.createElement('div');
+    head.className = 'floatwin__head';
+    head.innerHTML = `<span class="floatwin__title">·– CW Decoder</span>
+      <button type="button" class="floatwin__btn" data-act="close" title="Close">✕</button>`;
+
+    const body = document.createElement('div');
+    body.className = 'floatwin__body';
+    body.style.padding = '0';
+    body.style.display = 'flex';
+    body.innerHTML = cdBuildWindowHtml();
+
+    win.appendChild(head);
+    win.appendChild(body);
+    $('floatLayer').appendChild(win);
+    CD.win = win;
+    CD.body = body;
+
+    const el = {};
+    body.querySelectorAll('[data-el]').forEach(node=> el[node.dataset.el] = node);
+    CD.el = el;
+
+    el.preset.addEventListener('change', ()=>{ if(el.preset.value) el.tone.value = el.preset.value; });
+    body.querySelector('[data-act="syncTx"]').addEventListener('click', ()=>{
+      el.tone.value = Math.round(parseFloat($('cwTone').value)||600);
+      el.preset.value = '';
+    });
+    body.querySelector('[data-act="syncRx"]').addEventListener('click', ()=>{
+      el.tone.value = Math.round(parseFloat($('cwDecodeFreq').value)||600);
+      el.preset.value = '';
+    });
+
+    el.stopBtn.addEventListener('click', ()=> cdSetListening(!CD.listening));
+    el.timestamp.addEventListener('change', ()=> cdRenderLog(false));
+
+    body.querySelector('[data-act="copy"]').addEventListener('click', ()=>{
+      const text = CD.lines.map(l=> (el.timestamp.checked? l.ts+' ':'')+l.text).join('\n');
+      navigator.clipboard?.writeText(text).catch(()=>{});
+    });
+    body.querySelector('[data-act="download"]').addEventListener('click', ()=>{
+      const text = CD.lines.map(l=> (el.timestamp.checked? l.ts+' ':'')+l.text).join('\n');
+      const blob = new Blob([text], {type:'text/plain'});
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `cw-decode-${Date.now()}.txt`;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(()=> URL.revokeObjectURL(a.href), 2000);
+    });
+    body.querySelector('[data-act="clear"]').addEventListener('click', ()=>{
+      CD.lines = []; CD.lineStarted = false; CD.lineBuffer = '';
+      cdRenderLog(false);
+    });
+
+    function closeWin(){
+      cdSetListening(false);
+      win.remove();
+      CD.win = null; CD.body = null; CD.el = {};
+    }
+    head.querySelector('[data-act="close"]').addEventListener('click', closeWin);
+
+    // Drag the window by its header — same mechanic as the dock pop-outs
+    // and the RTTY decoder window above.
+    let dragging = false, startX=0, startY=0, startLeft=0, startTop=0;
+    head.addEventListener('mousedown', e=>{
+      if(e.target.closest('.floatwin__btn')) return;
+      dragging = true;
+      startX = e.clientX; startY = e.clientY;
+      const r = win.getBoundingClientRect();
+      startLeft = r.left; startTop = r.top;
+      e.preventDefault();
+    });
+    window.addEventListener('mousemove', e=>{
+      if(!dragging) return;
+      win.style.left = (startLeft + e.clientX - startX) + 'px';
+      win.style.top = (startTop + e.clientY - startY) + 'px';
+    });
+    window.addEventListener('mouseup', ()=>{ dragging = false; });
+
+    cdRenderLog(false);
+  }
+
+  $('btnOpenCwDecoder').addEventListener('click', openCwDecoderWindow);
 })();
 </script>
 </body>
