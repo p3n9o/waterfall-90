@@ -213,6 +213,7 @@
   }
   .btn-tune:hover{border-color:var(--amber);box-shadow:0 0 10px rgba(255,180,84,.15);}
   .btn-tune.active{background:var(--red);color:#1a0603;border-color:var(--red);animation:pulse 1s infinite;}
+  #btnAtuTune.active,#btnTune.active{background:var(--red);color:#1a0603;border-color:var(--red);animation:pulse 1s infinite;}
   @keyframes pulse{0%,100%{box-shadow:0 0 6px rgba(255,107,94,.4)}50%{box-shadow:0 0 18px rgba(255,107,94,.85)}}
 
   .band-row{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;}
@@ -245,6 +246,43 @@
     color:var(--text);border-radius:4px;padding:0 10px;cursor:pointer;
   }
   .freq-input button:hover{color:var(--phosphor);border-color:var(--phosphor-dim);}
+
+  .freqmem-list{display:flex;flex-direction:column;gap:6px;max-height:230px;overflow-y:auto;}
+  .freqmem-list:not(:empty){margin-top:2px;}
+  .freqmem-empty{font-family:var(--mono);font-size:11px;color:var(--text-dim);text-align:center;padding:10px 0;}
+  .freqmem-item{
+    display:flex;align-items:center;gap:8px;background:var(--panel-2);border:1px solid var(--line);
+    border-radius:4px;padding:7px 8px;cursor:pointer;transition:border-color .15s,background .15s;
+  }
+  .freqmem-item:hover{border-color:var(--phosphor-dim);background:#10190f;}
+  .freqmem-item__info{flex:1;min-width:0;}
+  .freqmem-item__name{font-family:var(--mono);font-size:12px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .freqmem-item__meta{font-family:var(--mono);font-size:10px;color:var(--text-dim);margin-top:3px;display:flex;align-items:center;gap:6px;}
+  .freqmem-item__mode{
+    display:inline-block;padding:1px 5px;border-radius:3px;border:1px solid var(--amber-dim);
+    color:var(--amber);font-size:9px;letter-spacing:.05em;line-height:1.5;
+  }
+  .freqmem-item__del{
+    flex:none;width:22px;height:22px;border:1px solid var(--line);border-radius:4px;background:none;
+    color:var(--text-dim);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:11px;
+  }
+  .freqmem-item__del:hover{border-color:var(--red);color:var(--red);}
+  .freqmem-add{margin-top:8px;display:flex;flex-direction:column;gap:6px;}
+  .freqmem-add input[type=text]{
+    font-family:var(--mono);font-size:12px;background:#060706;border:1px solid var(--line);color:var(--text);
+    padding:7px 8px;border-radius:4px;width:100%;
+  }
+  .freqmem-add__row{display:flex;gap:6px;}
+  .freqmem-add__row input[type=text]{flex:1;min-width:0;}
+  .freqmem-add__row select{
+    font-family:var(--mono);font-size:11px;background:#060706;border:1px solid var(--line);color:var(--text);
+    border-radius:4px;padding:0 6px;flex:none;width:72px;
+  }
+  .freqmem-add__row button{
+    font-family:var(--mono);font-size:11px;background:var(--panel-2);border:1px solid var(--line);
+    color:var(--text);border-radius:4px;padding:0 12px;cursor:pointer;flex:none;
+  }
+  .freqmem-add__row button:hover{color:var(--phosphor);border-color:var(--phosphor-dim);}
 
   .meter{height:6px;background:#060706;border-radius:3px;overflow:hidden;border:1px solid var(--line);margin-top:6px;}
   .meter .fill{height:100%;width:0%;background:linear-gradient(90deg,var(--phosphor),var(--amber),var(--red));transition:width .05s;}
@@ -729,6 +767,28 @@
         <div class="hint">Digits shown as MHz.kHz.tens‑Hz. Scroll over a digit to tune it directly.</div>
         <div class="hint">Bands jump to the lower edge — verify against your own licence before TX.</div>
       </div>
+
+      <div class="panel">
+        <h3>Saved frequencies</h3>
+        <div class="freqmem-list" id="freqMemList"></div>
+        <button class="btn" id="btnFreqMemAddCurrent" style="margin-top:10px;justify-content:center;border-color:var(--amber-dim);color:var(--amber);">Save current frequency</button>
+
+        <h3 class="sub">Add manually</h3>
+        <div class="freqmem-add">
+          <input type="text" id="freqMemName" placeholder="Name, e.g. 20M SSTV net">
+          <div class="freqmem-add__row">
+            <input type="text" id="freqMemFreq" placeholder="MHz e.g. 14.230000">
+            <select id="freqMemMode">
+              <option value="USB">USB</option>
+              <option value="LSB">LSB</option>
+              <option value="AM">AM</option>
+              <option value="NFM">NFM</option>
+            </select>
+            <button type="button" id="btnFreqMemAdd">+ Add</button>
+          </div>
+        </div>
+        <div class="hint">Click a saved entry to jump to it — sets frequency and mode if CAT is connected. Stored in this browser only.</div>
+      </div>
     </div><!-- /rack -->
       </div><!-- /dock__body -->
     </div><!-- /dock--left -->
@@ -788,9 +848,11 @@
         <h3 class="sub">ATU (built‑in tuner)</h3>
         <button class="btn" id="btnAtuToggle">Tuner: bypassed (tap to switch in‑line)</button>
         <div style="height:8px"></div>
-        <button class="btn btn-tune" id="btnAtuTune">⚡ Start ATU tune cycle</button>
+        <button class="btn" id="btnAtuTune" style="border-color:var(--amber-dim);color:var(--amber);justify-content:center;">⚡ Start ATU tune cycle</button>
+        <button class="btn" id="btnTune" style="margin-top:8px;border-color:var(--amber-dim);color:var(--amber);justify-content:center;">Transmit constant carrier (tune)</button>
         <div class="atu-status-row"><span>Status</span><span id="atuStatus">idle</span></div>
         <div class="hint warn">Briefly transmits — confirm antenna/dummy load + low power first.</div>
+        <div class="hint warn">Constant carrier: unmodulated tone, auto-cuts off (timeout in Settings). Low power only.</div>
 
         <div class="divider"></div>
 
@@ -808,11 +870,6 @@
         <input type="range" id="txTailSlider" min="0" max="2000" step="50" value="700">
         <div class="hint">Extra PTT hold after audio ends, so the image tail doesn't clip.</div>
 
-        <div class="divider"></div>
-
-        <h3 class="sub">Test tuning</h3>
-        <button class="btn btn-tune" id="btnTune">Transmit constant carrier (tune)</button>
-        <div class="hint warn">Unmodulated tone, auto-cuts off (timeout in Settings). Low power only.</div>
       </div>
     </div><!-- /rack -->
       </div><!-- /dock__body -->
@@ -1802,6 +1859,7 @@
   $('btnAtuTune').addEventListener('click', startAtuTune);
 
   const CIV_MODE_NAMES = {0x00:'LSB',0x01:'USB',0x02:'AM',0x03:'CW',0x04:'RTTY',0x05:'FM',0x06:'WFM',0x07:'CW-R',0x08:'RTTY-R'};
+  let currentModeName = 'USB'; // best-known current mode, used e.g. to pre-fill "save current frequency"
 
   async function setMode(modeByte){
     if(!S.catWriter){ alert('Connect CAT first.'); return; }
@@ -1824,9 +1882,94 @@
     $('modeCurrentStatus').textContent = name;
     $('btnModeUSB').classList.toggle('connected', modeByte === 0x01);
     $('btnModeLSB').classList.toggle('connected', modeByte === 0x00);
+    currentModeName = normalizeFreqMemMode(name);
   }
   $('btnModeUSB').addEventListener('click', ()=> setMode(0x01));
   $('btnModeLSB').addEventListener('click', ()=> setMode(0x00));
+
+  // ---- Saved frequencies (name + mode + freq memory list) ----
+  const FREQ_MEM_KEY = 'wf90_freqMemories_v1';
+  const FREQMEM_MODE_BYTES = {USB:0x01, LSB:0x00, AM:0x02, NFM:0x05};
+  let freqMemories = [];
+
+  function normalizeFreqMemMode(name){
+    if(name === 'WFM') return 'NFM';
+    return FREQMEM_MODE_BYTES.hasOwnProperty(name) ? name : 'USB';
+  }
+
+  function loadFreqMemories(){
+    try{ freqMemories = JSON.parse(localStorage.getItem(FREQ_MEM_KEY) || '[]'); }
+    catch(err){ freqMemories = []; }
+    if(!Array.isArray(freqMemories)) freqMemories = [];
+  }
+  function saveFreqMemoriesToStorage(){
+    try{ localStorage.setItem(FREQ_MEM_KEY, JSON.stringify(freqMemories)); }catch(err){}
+  }
+  function escapeHtml(str){
+    return String(str).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+  function renderFreqMemories(){
+    const list = $('freqMemList');
+    if(!freqMemories.length){
+      list.innerHTML = '<div class="freqmem-empty">No saved frequencies yet — add one below.</div>';
+      return;
+    }
+    list.innerHTML = '';
+    freqMemories.forEach((mem, idx)=>{
+      const row = document.createElement('div');
+      row.className = 'freqmem-item';
+      row.title = 'Go to ' + mem.name;
+      row.innerHTML =
+        '<div class="freqmem-item__info">' +
+          '<div class="freqmem-item__name">' + escapeHtml(mem.name) + '</div>' +
+          '<div class="freqmem-item__meta"><span class="freqmem-item__mode">' + escapeHtml(mem.mode) + '</span>' +
+            (mem.freqHz/1e6).toFixed(6) + ' MHz</div>' +
+        '</div>' +
+        '<button type="button" class="freqmem-item__del" title="Remove">✕</button>';
+      row.addEventListener('click', (e)=>{
+        if(e.target.closest('.freqmem-item__del')) return;
+        goToSavedFrequency(mem);
+      });
+      row.querySelector('.freqmem-item__del').addEventListener('click', (e)=>{
+        e.stopPropagation();
+        freqMemories.splice(idx, 1);
+        saveFreqMemoriesToStorage();
+        renderFreqMemories();
+      });
+      list.appendChild(row);
+    });
+  }
+  function addFreqMemory(name, freqHz, mode){
+    freqMemories.push({name, freqHz, mode});
+    saveFreqMemoriesToStorage();
+    renderFreqMemories();
+  }
+  function goToSavedFrequency(mem){
+    goToFrequency(mem.freqHz);
+    if(S.catWriter && FREQMEM_MODE_BYTES.hasOwnProperty(mem.mode)){
+      setMode(FREQMEM_MODE_BYTES[mem.mode]);
+    }
+  }
+
+  $('btnFreqMemAdd').addEventListener('click', ()=>{
+    const name = $('freqMemName').value.trim();
+    const mhz = parseFloat($('freqMemFreq').value);
+    const mode = $('freqMemMode').value;
+    if(!name){ alert('Enter a name for this frequency.'); return; }
+    if(isNaN(mhz) || mhz <= 0){ alert('Enter a valid frequency in MHz, e.g. 14.230000'); return; }
+    addFreqMemory(name, Math.round(mhz*1e6), mode);
+    $('freqMemName').value = '';
+    $('freqMemFreq').value = '';
+  });
+  $('btnFreqMemAddCurrent').addEventListener('click', ()=>{
+    const defaultName = (S.frequencyHz/1e6).toFixed(6) + ' MHz';
+    const name = (prompt('Name this frequency:', defaultName) || '').trim();
+    if(!name) return;
+    addFreqMemory(name, S.frequencyHz, currentModeName);
+  });
+
+  loadFreqMemories();
+  renderFreqMemories();
 
   async function connectHID(){
     if(!hasHid){ alert('WebHID is not available in this browser.'); return; }
