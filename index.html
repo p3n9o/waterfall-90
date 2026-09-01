@@ -182,6 +182,11 @@
     background:var(--panel);border:1px solid var(--line);border-radius:6px;
   }
   .dock-center .rack{height:100%;display:flex;flex-direction:column;overflow-y:auto;}
+  /* scope-wrap is the only thing in the centre rack — stretch it to
+     fill the full height instead of letting it size to its own content,
+     so its internal flex layout (see .scope-canvases) is what absorbs
+     size changes from the bottom dock, not the rack's scrollbar. */
+  .dock-center .rack > .scope-wrap{flex:1 1 auto;min-height:0;}
 
   /* When the centre dock has no panels left in it (e.g. the spectrum/
      waterfall panel's been closed and nothing else has been dragged
@@ -356,10 +361,19 @@
   .atu-status-row span#atuStatus{color:var(--phosphor);text-transform:none;letter-spacing:0;}
 
   /* waterfall */
-  .scope-wrap{background:var(--panel);border:1px solid var(--line);border-radius:6px;overflow:hidden;}
+  /* scope-wrap fills whatever height dock-center hands it (100% of the
+     .rack, which itself is 100% of dock-center) and lays its children
+     out as a column: fixed-height head, a canvases area that flexes to
+     absorb whatever space is left, then the fixed-height freq strip and
+     hint. That way, when the bottom dock opens/closes/resizes and
+     dock-center's available height changes, the flexible canvases area
+     — not the freq strip below it — is what grows or shrinks, so the
+     frequency indicators always stay right under the waterfall instead
+     of getting pushed off-screen or covered by the bottom panel. */
+  .scope-wrap{background:var(--panel);border:1px solid var(--line);border-radius:6px;overflow:hidden;height:100%;display:flex;flex-direction:column;}
   .scope-head{
     display:flex;justify-content:space-between;align-items:center;padding:8px 12px;
-    border-bottom:1px solid var(--line);
+    border-bottom:1px solid var(--line);flex:0 0 auto;
   }
   .scope-head h3{margin:0;}
   /* frequency axis strip along the bottom of the waterfall — several
@@ -369,6 +383,7 @@
   .scope-freqs{
     display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;
     color:var(--text-dim);padding:5px 10px 6px;background:var(--panel-2);border-top:1px solid var(--line);
+    flex:0 0 auto;
   }
   .scope-freqs__tick{position:relative;padding-top:6px;white-space:nowrap;}
   .scope-freqs__tick::before{
@@ -377,17 +392,58 @@
   }
   .scope-freqs__tick:first-child::before{left:0;transform:none;}
   .scope-freqs__tick:last-child::before{left:auto;right:0;transform:none;}
+
+  /* top ruler + channel markers — mirrors the bottom .scope-freqs axis
+     but sits above the canvases, with tick marks pointing DOWN toward
+     the waterfall (instead of up), plus a channel-tag strip underneath
+     it for the coloured pill markers. Both live in .scope-topbar, which
+     is flex:0 0 auto so it takes only the height its content needs and
+     leaves the rest to .scope-canvases (see below). */
+  .scope-topbar{flex:0 0 auto;background:var(--panel-2);border-bottom:1px solid var(--line);}
+  .scope-ruler{
+    display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;
+    color:var(--text-dim);padding:5px 10px 6px;
+  }
+  .scope-ruler__tick{position:relative;padding-bottom:6px;white-space:nowrap;}
+  .scope-ruler__tick::before{
+    content:"";position:absolute;bottom:0;left:50%;width:1px;height:4px;
+    background:var(--text-dim);opacity:.6;transform:translateX(-50%);
+  }
+  .scope-ruler__tick:first-child::before{left:0;transform:none;}
+  .scope-ruler__tick:last-child::before{left:auto;right:0;transform:none;}
+
+  /* channel-marker pills — absolutely positioned by Hz within the span
+     (left:%), stacked into extra rows when two tags would overlap, à la
+     a WebSDR-style "Voice 80m"/callsign tag strip. Height is set on the
+     container from JS once the row count is known, so .scope-topbar
+     (and therefore how much room is left for the canvases) grows only
+     as much as the current markers actually need. */
+  .scope-channels{position:relative;padding:1px 4px 5px;}
+  .scope-channels.is-empty{padding:0;}
+  .scope-channel-tag{
+    position:absolute;transform:translateX(-50%);white-space:nowrap;
+    font-family:var(--mono);font-size:9.5px;font-weight:700;letter-spacing:.02em;
+    padding:2px 7px;border-radius:9px;color:#0c0f0a;line-height:1.5;
+    box-shadow:0 1px 3px rgba(0,0,0,.4);pointer-events:none;
+  }
+
   .rx-audio-row{display:flex;align-items:center;gap:10px;padding:8px 12px;border-top:1px solid var(--line);}
   .rx-audio-row .btn{width:auto;flex:none;justify-content:center;padding:7px 12px;}
   .zoom-row .vol-wrap{display:flex;align-items:center;gap:6px;margin-left:8px;}
   .zoom-row .vol-wrap span{font-family:var(--mono);font-size:9px;color:var(--text-dim);letter-spacing:.05em;}
   .zoom-row .vol-wrap input[type=range]{width:80px;}
-  #waterfall{display:block;width:100%;height:clamp(200px,38vh,420px);background:#000;image-rendering:pixelated;}
+  /* height is no longer a fixed/vh-based clamp — the canvas flexes to
+     fill whatever room .scope-canvases has left after the spectrum strip,
+     so it shrinks in step with dock-center rather than overflowing it. */
+  #waterfall{display:block;width:100%;flex:1 1 auto;min-height:80px;background:#000;image-rendering:pixelated;}
   .scope-foot{display:flex;gap:8px;padding:8px 12px;border-top:1px solid var(--line);flex-wrap:wrap;}
   .scope-foot .btn{width:auto;flex:1;min-width:140px;justify-content:center;}
 
-  /* spectrum line graph, sits above the waterfall like a classic SDR panadapter */
-  #spectrumCanvas{display:block;width:100%;height:clamp(70px,14vh,130px);background:#04050a;border-bottom:1px solid var(--line);}
+  /* spectrum line graph, sits above the waterfall like a classic SDR panadapter.
+     Kept as a modest, mostly-fixed strip (it still has some vh give so it
+     doesn't vanish on tall layouts) — the waterfall below is what absorbs
+     the rest of the available height. */
+  #spectrumCanvas{display:block;width:100%;flex:0 0 auto;height:clamp(50px,14vh,130px);background:#04050a;border-bottom:1px solid var(--line);}
   .zoom-row{display:flex;align-items:center;gap:4px;flex-wrap:wrap;row-gap:6px;}
   .zoom-btn{
     font-family:var(--mono);font-size:13px;font-weight:700;line-height:1;color:var(--text-dim);
@@ -398,8 +454,13 @@
   .span-readout{font-family:var(--mono);font-size:10px;color:var(--text-dim);padding:0 4px;white-space:nowrap;}
 
   /* the two scope canvases stacked in a positioned wrapper so the stats
-     overlay below can sit on top of them, pinned to a corner */
-  .scope-canvases{position:relative;}
+     overlay below can sit on top of them, pinned to a corner. This
+     wrapper is the part of scope-wrap that actually flexes — it grows
+     to fill dock-center when the bottom dock is collapsed/closed and
+     shrinks the instant it opens or is dragged taller, so the freq
+     strip and hint pinned below it are pushed up in step and never end
+     up hidden underneath the bottom panel. */
+  .scope-canvases{position:relative;flex:1 1 auto;min-height:0;display:flex;flex-direction:column;overflow:hidden;}
 
   /* small transparent stats HUD overlaid on the spectrum/waterfall,
      the same idea as a classic WebSDR info box — frame rate, FFT
@@ -851,6 +912,16 @@
             <button class="zoom-btn" id="btnToggleStats" title="Show/hide the stats overlay" style="margin-left:8px;">ⓘ</button>
           </div>
         </div>
+        <!-- top frequency ruler + channel-marker tags, like a classic
+             SDR panadapter strip: fine tick/Hz ruler, and colour-coded
+             pill tags for the tone points this build actually knows
+             about (CW TX/decode pitch, RTTY mark/space), positioned
+             along the same Hz axis and stacked into extra rows so they
+             never overlap each other. -->
+        <div class="scope-topbar">
+          <div class="scope-ruler" id="scopeRulerTop"></div>
+          <div class="scope-channels" id="scopeChannels"></div>
+        </div>
         <div class="scope-canvases">
           <canvas id="spectrumCanvas"></canvas>
           <canvas id="waterfall"></canvas>
@@ -865,7 +936,8 @@
           </div>
         </div>
         <div class="scope-freqs" id="scopeFreqs"></div>
-        <div class="hint" style="padding:8px 12px 10px;border-top:1px solid var(--line);">Plays RX audio through the device set in <b>Settings → Audio → Monitor speaker</b>.</div>
+        <div class="hint" style="padding:8px 12px 10px;border-top:1px solid var(--line);flex:0 0 auto;">Plays RX audio through the device set in <b>Settings → Audio → Monitor speaker</b>.</div>
+        <div class="hint" style="padding:0 12px 8px;flex:0 0 auto;">Coloured tags above the waterfall mark known tone points — CW TX/decode pitch and RTTY mark/space — wherever they fall inside the current span.</div>
       </div>
     </div><!-- /rack -->
     </div><!-- /dock-center -->
@@ -3159,6 +3231,7 @@
     const scopeResizeObserver = new ResizeObserver(()=>{
       resizeCanvas();
       resizeSpecCanvas();
+      renderChannelMarkers();
     });
     scopeResizeObserver.observe(canvas.parentElement);
   }
@@ -3335,26 +3408,98 @@
     if(S.waterfall.running) animateWaterfall();
   });
 
+  function buildRulerTicks(el, tickCount){
+    if(!el) return;
+    el.innerHTML = '';
+    for(let i=0;i<tickCount;i++){
+      const t = i/(tickCount-1);
+      const hz = Math.round(S.waterfall.min + t*(S.waterfall.max-S.waterfall.min));
+      const tick = document.createElement('span');
+      tick.className = el.id === 'scopeRulerTop' ? 'scope-ruler__tick' : 'scope-freqs__tick';
+      tick.textContent = hz+' Hz';
+      el.appendChild(tick);
+    }
+  }
+
   function updateFreqLabels(){
     $('wfSpanReadout').textContent = Math.round(S.waterfall.max-S.waterfall.min)+' Hz span';
     $('wfMin').value = S.waterfall.min;
     $('wfMax').value = S.waterfall.max;
 
-    // Rebuild the frequency axis strip as several evenly spaced tick
-    // labels across the current span, rather than just min/centre/max.
-    const freqsEl = $('scopeFreqs');
-    if(freqsEl){
-      const TICK_COUNT = 5;
-      freqsEl.innerHTML = '';
-      for(let i=0;i<TICK_COUNT;i++){
-        const t = i/(TICK_COUNT-1);
-        const hz = Math.round(S.waterfall.min + t*(S.waterfall.max-S.waterfall.min));
-        const tick = document.createElement('span');
-        tick.className = 'scope-freqs__tick';
-        tick.textContent = hz+' Hz';
-        freqsEl.appendChild(tick);
+    // Rebuild the frequency axis strips — top ruler and bottom strip —
+    // as several evenly spaced tick labels across the current span,
+    // rather than just min/centre/max. Both share the same S.waterfall
+    // min/max, so they always agree with each other and with the
+    // channel markers rendered over the top ruler.
+    buildRulerTicks($('scopeRulerTop'), 5);
+    buildRulerTicks($('scopeFreqs'), 5);
+    renderChannelMarkers();
+  }
+
+  // =====================================================================
+  // CHANNEL MARKERS — coloured pill tags above the waterfall, one per
+  // tone point this build actually knows about (CW TX tone, CW decode
+  // listen frequency, RTTY mark/space tones), positioned along the same
+  // Hz axis as the ruler. Markers outside the current span are skipped;
+  // markers that would visually overlap are pushed onto additional
+  // stacked rows instead of hiding one of them.
+  // =====================================================================
+  const CHANNEL_MARKER_ROW_H = 20; // px per stacked row
+  function getChannelMarkers(){
+    const list = [];
+    const cwTone = parseFloat($('cwTone').value);
+    if(!isNaN(cwTone)) list.push({hz:cwTone, label:'CW TX', color:'var(--amber)'});
+    const cwDecodeFreq = parseFloat($('cwDecodeFreq').value);
+    if(!isNaN(cwDecodeFreq)) list.push({hz:cwDecodeFreq, label:'CW RX', color:'var(--phosphor)'});
+    const mark = parseFloat($('rttyMark').value);
+    const shift = parseFloat($('rttyShift').value);
+    const reverse = $('rttyReverse') && $('rttyReverse').checked;
+    if(!isNaN(mark)){
+      list.push({hz:mark, label:'RTTY Mark', color:'var(--teal)'});
+      if(!isNaN(shift)){
+        const space = reverse ? mark - shift : mark + shift;
+        list.push({hz:space, label:'RTTY Space', color:'var(--red)'});
       }
     }
+    return list;
+  }
+  function renderChannelMarkers(){
+    const el = $('scopeChannels');
+    if(!el) return;
+    const min = S.waterfall.min, max = S.waterfall.max, span = max-min;
+    const visible = getChannelMarkers()
+      .filter(m => span>0 && m.hz>=min && m.hz<=max)
+      .sort((a,b)=>a.hz-b.hz);
+
+    el.innerHTML = '';
+    el.classList.toggle('is-empty', visible.length===0);
+    if(!visible.length){ el.style.height = '0px'; return; }
+
+    // Greedy row assignment: walk markers left→right, put each one on the
+    // first row whose previous tag (estimated by label length) wouldn't
+    // visually collide with it, otherwise start/continue the next row.
+    const containerWidth = Math.max(1, el.getBoundingClientRect().width);
+    const rowRightEdge = []; // px right-edge of the last tag placed in each row
+    visible.forEach(m=>{
+      const pct = (m.hz-min)/span;
+      const xPx = pct*containerWidth;
+      const estWidthPx = 16 + m.label.length*5.6; // rough pill width incl. padding
+      let row = 0;
+      while(rowRightEdge[row] !== undefined && xPx - estWidthPx/2 < rowRightEdge[row] + 4){
+        row++;
+      }
+      rowRightEdge[row] = xPx + estWidthPx/2;
+
+      const tag = document.createElement('span');
+      tag.className = 'scope-channel-tag';
+      tag.textContent = m.label;
+      tag.style.left = (pct*100)+'%';
+      tag.style.top = (row*CHANNEL_MARKER_ROW_H)+'px';
+      tag.style.background = m.color;
+      tag.title = m.label+' — '+Math.round(m.hz)+' Hz';
+      el.appendChild(tag);
+    });
+    el.style.height = (rowRightEdge.length*CHANNEL_MARKER_ROW_H + 4)+'px';
   }
 
   // =====================================================================
@@ -4072,7 +4217,7 @@
     if(v > wpm){ v = wpm; $('cwFarnsworth').value = wpm; }
     $('cwFarnsworthVal').textContent = Math.round(v)+' WPM' + (v>=wpm ? ' (off)' : '');
   });
-  bindRange('cwTone', v=>{ $('cwToneVal').textContent = Math.round(v)+' Hz'; });
+  bindRange('cwTone', v=>{ $('cwToneVal').textContent = Math.round(v)+' Hz'; renderChannelMarkers(); });
   bindRange('cwDriveSlider', v=>{ S.cw.drive = v/100; $('cwDriveVal').textContent = Math.round(v)+'%'; });
 
   function cwFreqToBin(freq){
@@ -4163,7 +4308,7 @@
     S.cw.symbolBuffer = '';
     cwUpdateReadout();
   });
-  bindRange('cwDecodeFreq', v=>{ $('cwDecodeFreqVal').textContent = Math.round(v)+' Hz'; });
+  bindRange('cwDecodeFreq', v=>{ $('cwDecodeFreqVal').textContent = Math.round(v)+' Hz'; renderChannelMarkers(); });
   bindRange('cwDecodeWpm', v=>{ $('cwDecodeWpmVal').textContent = Math.round(v)+' WPM'; });
   bindRange('cwSquelch', v=>{ $('cwSquelchVal').textContent = Math.round(v)+'%'; });
 
@@ -4415,9 +4560,9 @@
     }
   });
 
-  bindRange('rttyMark', v=>{ $('rttyMarkVal').textContent = Math.round(v)+' Hz'; updateRttySpaceLabel(); });
-  bindRange('rttyShift', v=>{ $('rttyShiftVal').textContent = Math.round(v)+' Hz'; updateRttySpaceLabel(); });
-  $('rttyReverse').addEventListener('change', updateRttySpaceLabel);
+  bindRange('rttyMark', v=>{ $('rttyMarkVal').textContent = Math.round(v)+' Hz'; updateRttySpaceLabel(); renderChannelMarkers(); });
+  bindRange('rttyShift', v=>{ $('rttyShiftVal').textContent = Math.round(v)+' Hz'; updateRttySpaceLabel(); renderChannelMarkers(); });
+  $('rttyReverse').addEventListener('change', ()=>{ updateRttySpaceLabel(); renderChannelMarkers(); });
   document.querySelectorAll('#txSubRTTY .btn-row .btn[data-shift]').forEach(btn=>{
     btn.addEventListener('click', ()=>{
       $('rttyShift').value = btn.dataset.shift;
