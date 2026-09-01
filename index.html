@@ -139,6 +139,43 @@
   .dock.is-collapsed .dock__body{display:none;}
   .dock__body > .rack{display:flex;flex-direction:column;gap:clamp(8px,1vw,14px);}
 
+  /* bottom dock split — vertical divide down the middle into two
+     independently-scrolling halves, left kept as-is (Transmit) and
+     right holding the new Extensions list. */
+  .dock__body--split{display:flex;flex-direction:row;padding:0;overflow:hidden;}
+  .bottom-half{flex:1 1 50%;min-width:0;height:100%;overflow-y:auto;overflow-x:hidden;padding:10px;}
+  .bottom-half + .bottom-half{border-left:1px solid var(--line);}
+  .bottom-half > .rack{display:flex;flex-direction:column;gap:clamp(8px,1vw,14px);}
+  @media (max-width:900px){
+    .dock__body--split{flex-direction:column;}
+    .bottom-half{height:auto;overflow:visible;}
+    .bottom-half + .bottom-half{border-left:none;border-top:1px solid var(--line);}
+  }
+
+  /* Extensions list — modelled on UberSDR's (madpsy/ka9q_ubersdr,
+     GPL-3.0) bottom-dock "Extensions" section: a flat list of tool
+     rows, each opening its own decoder. Rows for tools this build
+     doesn't implement are shown disabled, same as upstream. */
+  .ext-list{display:flex;flex-direction:column;gap:2px;}
+  .ext-row{
+    display:flex;align-items:flex-start;gap:10px;width:100%;
+    background:none;border:1px solid transparent;border-radius:4px;
+    padding:8px 8px;cursor:pointer;text-align:left;font-family:var(--sans);
+    color:var(--text);transition:border-color .15s,background .15s;
+  }
+  .ext-row:hover:not(:disabled){background:var(--panel-2);border-color:var(--line);}
+  .ext-row:disabled{cursor:not-allowed;opacity:.42;}
+  .ext-row__icon{
+    flex:none;width:26px;height:26px;border-radius:5px;margin-top:1px;
+    display:flex;align-items:center;justify-content:center;font-size:14px;
+    background:var(--panel-2);border:1px solid var(--line);color:var(--phosphor);
+  }
+  .ext-row:disabled .ext-row__icon{color:var(--text-dim);}
+  .ext-row__text{display:flex;flex-direction:column;gap:2px;min-width:0;}
+  .ext-row__title{font-size:12.5px;font-weight:600;color:var(--text);letter-spacing:.01em;}
+  .ext-row:disabled .ext-row__title{color:var(--text-dim);font-weight:500;}
+  .ext-row__summary{font-size:11px;line-height:1.35;color:var(--text-dim);}
+
   .dock-center{
     flex:1 1 auto;min-height:0;min-width:0;
     display:flex;flex-direction:column;overflow:hidden;
@@ -805,7 +842,6 @@
             <button class="zoom-btn" id="btnZoomIn" title="Increase bandwidth (+100 Hz)">＋</button>
             <div class="btn-row" style="width:auto;margin-left:8px;">
               <button class="btn" id="btnStartWaterfall" style="width:auto;">▶ Start</button>
-              <button class="btn" id="btnOpenRttyDecoder" style="width:auto;" title="Open the FSK / RTTY decoder tool window">FSK/RTTY RX</button>
               <button class="btn" id="btnMonitorToggle" style="width:auto;">🔇 Listen (muted)</button>
             </div>
             <div class="vol-wrap">
@@ -880,10 +916,11 @@
   <!-- bottom dock -->
   <div class="dock dock--bottom" data-dock="bottom">
     <button type="button" class="dock__header" data-dock-toggle="bottom" title="Collapse bottom panels">
-      <span class="dock__name">Bottom panels — Transmit</span>
+      <span class="dock__name">Bottom panels</span>
       <span class="dock__collapse">▾</span>
     </button>
-    <div class="dock__body">
+    <div class="dock__body dock__body--split">
+    <div class="bottom-half bottom-half--transmit">
     <div class="rack">
       <div class="panel" style="margin-top:14px;">
         <h3>Transmit</h3>
@@ -1322,6 +1359,102 @@
         </div>
       </div>
     </div><!-- /rack -->
+    </div><!-- /bottom-half--transmit -->
+
+    <div class="bottom-half bottom-half--extensions">
+    <div class="rack">
+      <div class="panel" style="margin-top:14px;">
+        <h3>Extensions</h3>
+        <div class="ext-list">
+          <button type="button" class="ext-row" id="btnOpenRttyDecoder" title="Open the FSK / RTTY decoder tool window">
+            <span class="ext-row__icon">🖨</span>
+            <span class="ext-row__text">
+              <span class="ext-row__title">FSK / RTTY Decoder</span>
+              <span class="ext-row__summary">Live teleprinter copy — RTTY, weather, SITOR‑B and NAVTEX.</span>
+            </span>
+          </button>
+          <button type="button" class="ext-row" disabled title="Not enabled on this receiver">
+            <span class="ext-row__icon">〰</span>
+            <span class="ext-row__text">
+              <span class="ext-row__title">FT8 Decoder</span>
+              <span class="ext-row__summary">Not enabled on this receiver</span>
+            </span>
+          </button>
+          <button type="button" class="ext-row" disabled title="Not enabled on this receiver">
+            <span class="ext-row__icon">⚓</span>
+            <span class="ext-row__text">
+              <span class="ext-row__title">NAVTEX Decoder</span>
+              <span class="ext-row__summary">Not enabled on this receiver</span>
+            </span>
+          </button>
+          <button type="button" class="ext-row" disabled title="Not enabled on this receiver">
+            <span class="ext-row__icon">⌁</span>
+            <span class="ext-row__text">
+              <span class="ext-row__title">Olivia Decoder</span>
+              <span class="ext-row__summary">Not enabled on this receiver</span>
+            </span>
+          </button>
+          <button type="button" class="ext-row" disabled title="Not enabled on this receiver">
+            <span class="ext-row__icon">·–</span>
+            <span class="ext-row__text">
+              <span class="ext-row__title">CW Decoder</span>
+              <span class="ext-row__summary">Not enabled on this receiver</span>
+            </span>
+          </button>
+          <button type="button" class="ext-row" disabled title="Not enabled on this receiver">
+            <span class="ext-row__icon">🗺</span>
+            <span class="ext-row__text">
+              <span class="ext-row__title">WEFAX Decoder</span>
+              <span class="ext-row__summary">Not enabled on this receiver</span>
+            </span>
+          </button>
+          <button type="button" class="ext-row" disabled title="Not enabled on this receiver">
+            <span class="ext-row__icon">▦</span>
+            <span class="ext-row__text">
+              <span class="ext-row__title">QRSS Grabber</span>
+              <span class="ext-row__summary">Not enabled on this receiver</span>
+            </span>
+          </button>
+          <button type="button" class="ext-row" disabled title="Not enabled on this receiver">
+            <span class="ext-row__icon">🎙</span>
+            <span class="ext-row__text">
+              <span class="ext-row__title">FreeDV Decoder</span>
+              <span class="ext-row__summary">Not enabled on this receiver</span>
+            </span>
+          </button>
+          <button type="button" class="ext-row" disabled title="Not enabled on this receiver">
+            <span class="ext-row__icon">📻</span>
+            <span class="ext-row__text">
+              <span class="ext-row__title">DRM Decoder</span>
+              <span class="ext-row__summary">Not enabled on this receiver</span>
+            </span>
+          </button>
+          <button type="button" class="ext-row" disabled title="Not enabled on this receiver">
+            <span class="ext-row__icon">🖼</span>
+            <span class="ext-row__text">
+              <span class="ext-row__title">SSTV Decoder</span>
+              <span class="ext-row__summary">Not enabled on this receiver</span>
+            </span>
+          </button>
+          <button type="button" class="ext-row" disabled title="Not enabled on this receiver">
+            <span class="ext-row__icon">⌥</span>
+            <span class="ext-row__text">
+              <span class="ext-row__title">Sound Modem</span>
+              <span class="ext-row__summary">Not enabled on this receiver</span>
+            </span>
+          </button>
+          <button type="button" class="ext-row" disabled title="Not enabled on this receiver">
+            <span class="ext-row__icon">📝</span>
+            <span class="ext-row__text">
+              <span class="ext-row__title">Speech‑to‑Text</span>
+              <span class="ext-row__summary">Not enabled on this receiver</span>
+            </span>
+          </button>
+        </div>
+        <div class="hint" style="margin-top:10px;">FSK/RTTY is fully implemented — click it to open the decoder tool window (opens with NAVTEX/SITOR‑B/RTTY presets built in). The rest are placeholders for future extensions, shown the way an unavailable extension appears on a real receiver.</div>
+      </div>
+    </div><!-- /rack -->
+    </div><!-- /bottom-half--extensions -->
     </div><!-- /dock__body -->
   </div><!-- /dock--bottom -->
 </div><!-- /view-radio -->
