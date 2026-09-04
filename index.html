@@ -443,6 +443,7 @@
   .drop-zone input{display:none;}
   .preview-row{display:flex;gap:10px;align-items:center;margin-top:10px;}
   #imgPreview{width:64px;height:64px;object-fit:cover;border:1px solid var(--line);border-radius:4px;display:none;}
+  #sstvPreview{width:64px;height:64px;object-fit:cover;border:1px solid var(--line);border-radius:4px;display:none;}
   .preview-info{font-family:var(--mono);font-size:10px;color:var(--text-dim);flex:1;}
 
   .progress-track{height:5px;background:#060706;border:1px solid var(--line);border-radius:3px;overflow:hidden;margin-top:10px;display:none;}
@@ -931,6 +932,7 @@
           <button class="subtab-btn" data-subtab="txSubAudioFile">Audio File</button>
           <button class="subtab-btn" data-subtab="txSubCW">CW / Morse</button>
           <button class="subtab-btn" data-subtab="txSubRTTY">RTTY</button>
+          <button class="subtab-btn" data-subtab="txSubSSTV">SSTV</button>
         </div>
 
         <div class="subtab-view active" id="txSubImage">
@@ -1357,6 +1359,42 @@
             <div class="hint">Decodes from whatever DE‑19 audio-in is hearing — an async start/stop bit sync against the <b>Baud rate</b> above (not adaptive, so match it to the sending station), reusing the same receive audio connection as the waterfall. Connect DE‑19 audio (left panel) first; works whether or not the waterfall display itself is running. Best results with a strong, steady signal and Mark/Shift set to match what's actually being sent.</div>
           </details>
         </div>
+
+        <div class="subtab-view" id="txSubSSTV">
+          <div class="drop-zone" id="sstvDropZone">
+            Click or drop a photo — encoded as a real SSTV picture, decodable by MMSSTV, QSSTV, Robot36 and any other SSTV app.
+            <input type="file" id="sstvFileInput" accept="image/*">
+          </div>
+          <div class="preview-row">
+            <img id="sstvPreview">
+            <div class="preview-info" id="sstvInfo">No image loaded.</div>
+          </div>
+
+          <label class="field">SSTV mode</label>
+          <select id="sstvMode">
+            <option value="martinM1" selected>Martin M1 — 320×256, ~114 s (most common in Europe)</option>
+            <option value="martinM2">Martin M2 — 320×256, ~58 s</option>
+            <option value="scottieS1">Scottie S1 — 320×256, ~110 s (most common in North America)</option>
+            <option value="scottieS2">Scottie S2 — 320×256, ~71 s</option>
+            <option value="robot36">Robot 36 — 320×240, ~37 s (colour, low bandwidth)</option>
+            <option value="robot72">Robot 72 — 320×240, ~73 s (colour, sharper chroma)</option>
+          </select>
+          <div class="hint" id="sstvModeHint">Sent with a standard VIS header (44) at the start, so any SSTV receiver auto-detects the mode — no need to tell the other end what you picked.</div>
+
+          <label class="field">TX mic gain <span class="range-val" id="sstvDriveVal">20%</span></label>
+          <input type="range" id="sstvDriveSlider" min="0" max="200" value="20">
+
+          <div class="progress-track" id="sstvProgressTrack"><div class="progress-fill" id="sstvProgressFill"></div></div>
+
+          <div class="scope-foot">
+            <button class="btn btn-primary" id="btnSstvRender" disabled>1 · Render to audio</button>
+            <button class="btn btn-primary" id="btnSstvPreview" disabled>▶ Preview (speaker)</button>
+            <button class="btn btn-tune" id="btnSstvTx" disabled>2 · Transmit over air</button>
+          </div>
+          <div class="hint" id="sstvDurationHint">Estimated transmit time: ~114.0 s</div>
+          <div class="hint">The photo is cropped and scaled to fill the selected mode's frame — 320×256 for Martin/Scottie, 320×240 for Robot — so a roughly matching aspect ratio crops most naturally. Martin/Scottie send Green/Blue/Red tones directly; Robot sends brightness (Y) at full resolution plus colour difference (R−Y/B−Y) at half horizontal resolution, which is why Robot modes are faster for a similar picture size. All run 1500 Hz (black) to 2300 Hz (full level) per channel, with continuous-phase synthesis so there's no clicking between pixels or lines.</div>
+          <div class="hint warn">SSTV is a continuous, fairly loud tone for the whole picture (60–115 seconds depending on mode) — same ALC guidance as Image/Text: if RX sounds distorted or the G90's ALC pins, turn TX mic gain <i>down</i>, not up.</div>
+        </div>
       </div>
     </div><!-- /rack -->
     </div><!-- /bottom-half--transmit -->
@@ -1663,6 +1701,12 @@
       currentSource:null, // tracks the in-flight RTTY buffer source so a re-trigger can't overlap it
       listening:false, frameActive:false, frameStartTime:0, frameBits:[],
       lastIsMark:true, shiftState:'LTRS', decodedText:'', decodeIntervalId:null,
+    },
+    sstv:{
+      drive:0.2, renderedBuffer:null,
+      currentSource:null, // tracks the in-flight SSTV buffer source so a re-trigger can't overlap it
+      img:null, // the loaded <img> element — cropped per-mode at render time (Martin/Scottie want 320x256, Robot wants 320x240)
+      imageName:'', progressRAF:null, txStartTime:0,
     },
   };
 
@@ -4572,6 +4616,289 @@
   bindRange('rttyDecodeSquelch', v=>{ $('rttyDecodeSquelchVal').textContent = Math.round(v)+'%'; });
 
   // =====================================================================
+  // SSTV — send: photo to a real Martin/Scottie slow-scan-TV transmission.
+  // This is a standards-accurate encoder (not the novelty "draw on the
+  // waterfall" trick used by Image/Text above) — anything that speaks
+  // SSTV (MMSSTV, QSSTV, RX-SSTV, robot36 apps, etc.) can decode it.
+  //
+  // Encoder notes:
+  //  - Martin and Scottie are both 320x256, RGB-sequential (scanned as
+  //    Green, Blue, Red per line), analogue FM: each pixel is a short
+  //    constant tone somewhere between 1500 Hz (black) and 2300 Hz
+  //    (full brightness) for that colour channel. Continuous phase is
+  //    kept across the whole transmission (like the CW/RTTY encoders
+  //    above) so there's no clicking at pixel/line boundaries.
+  //  - Timings and VIS codes below are the standard published values
+  //    (N7CXI's SSTV Mode Specifications / the SSTV Handbook): Martin
+  //    sync sits at the start of each line; Scottie's sync sits between
+  //    the Blue and Red scans, with one extra 9ms sync pulse before the
+  //    very first line only.
+  //  - VIS (Vertical Interval Signaling) header: two 300ms/1900Hz leader
+  //    tones bracketing a 10ms/1200Hz break, then a 1200Hz start bit, 7
+  //    data bits LSB-first (1100Hz=1, 1300Hz=0), one even-parity bit,
+  //    and a 1200Hz stop bit — this is what lets a receiver auto-detect
+  //    the mode instead of needing to be told in advance.
+  // =====================================================================
+  const SSTV_MODES = {
+    martinM1:  { label:'Martin M1',  width:320, height:256, pixelMs:146.320/320, syncMs:4.862, gapMs:0.572, vis:44, family:'martin'  },
+    martinM2:  { label:'Martin M2',  width:320, height:256, pixelMs:73.216/320,  syncMs:4.862, gapMs:0.572, vis:40, family:'martin'  },
+    scottieS1: { label:'Scottie S1', width:320, height:256, pixelMs:0.432,       sepMs:1.5, syncMs:9.0, porchMs:1.5, vis:60, family:'scottie' },
+    scottieS2: { label:'Scottie S2', width:320, height:256, pixelMs:0.2752,      sepMs:1.5, syncMs:9.0, porchMs:1.5, vis:56, family:'scottie' },
+    // Robot modes use Y (luminance, full width) + colour-difference chroma
+    // (R−Y / B−Y, half horizontal width) instead of RGB — see the YCbCr
+    // branch in renderSstvBuffer(). Robot 36 alternates a single chroma
+    // channel per line (Cr on even rows, Cb on odd); Robot 72 sends both
+    // chroma channels every line, hence the longer transmit time.
+    robot36: { label:'Robot 36', width:320, height:240, vis:8,  family:'robot36',
+      syncMs:9.0, porchMs:3.0, yMs:88,  sepMs:4.5, porch2Ms:1.5, chromaMs:44 },
+    robot72: { label:'Robot 72', width:320, height:240, vis:12, family:'robot72',
+      syncMs:9.0, porchMs:3.0, yMs:138, sepMs:4.5, porch2Ms:1.5, chromaMs:69 },
+  };
+  const SSTV_VIS_HEADER_MS = 300+10+300+30+(7*30)+30+30; // leader+break+leader+startbit+7databits+parity+stopbit = 910ms
+
+  // Total transmit time for one frame in the given mode — used both to
+  // size the render buffer up front and to show the duration estimate
+  // before an image is even loaded.
+  function sstvModeDurationMs(spec){
+    let lineMs;
+    if(spec.family === 'martin'){
+      lineMs = spec.syncMs + spec.gapMs + spec.pixelMs*spec.width + spec.gapMs + spec.pixelMs*spec.width + spec.gapMs + spec.pixelMs*spec.width;
+    } else if(spec.family === 'scottie'){
+      lineMs = spec.sepMs + spec.pixelMs*spec.width + spec.sepMs + spec.pixelMs*spec.width + spec.syncMs + spec.porchMs + spec.pixelMs*spec.width;
+    } else if(spec.family === 'robot36'){
+      lineMs = spec.syncMs + spec.porchMs + spec.yMs + spec.sepMs + spec.porch2Ms + spec.chromaMs;
+    } else { // robot72 — both chroma channels sent every line
+      lineMs = spec.syncMs + spec.porchMs + spec.yMs + spec.sepMs + spec.porch2Ms + spec.chromaMs + spec.sepMs + spec.porch2Ms + spec.chromaMs;
+    }
+    const extra = spec.family === 'scottie' ? 9 : 0; // one-off starting sync pulse, first line only
+    return SSTV_VIS_HEADER_MS + extra + lineMs*spec.height;
+  }
+
+  function updateSstvDurationEstimate(){
+    const spec = SSTV_MODES[$('sstvMode').value];
+    $('sstvDurationHint').textContent = `Estimated transmit time: ~${(sstvModeDurationMs(spec)/1000).toFixed(1)} s`;
+    $('sstvModeHint').textContent = `Sent with a standard VIS header (${spec.vis}) at the start, so any SSTV receiver auto-detects ${spec.label} — no need to tell the other end what you picked.`;
+  }
+
+  // Loads a photo and keeps the decoded <img> around — cropping/scaling
+  // happens per-mode at render time (sstvCoverDraw), since Martin/Scottie
+  // want a 320x256 frame but Robot wants 320x240. The on-screen preview
+  // just shows the original photo; the CSS object-fit:cover on it already
+  // gives a close approximation of the eventual crop.
+  function loadSstvImageFile(file){
+    if(!file || !file.type.startsWith('image/')) return;
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = ()=>{
+      S.sstv.img = img;
+      S.sstv.imageName = file.name;
+      $('sstvPreview').src = url;
+      $('sstvPreview').style.display = 'block';
+      $('sstvInfo').textContent = `${file.name} — will be cropped to fit the selected mode`;
+      $('btnSstvRender').disabled = false;
+      updateSstvDurationEstimate();
+    };
+    img.onerror = ()=>{ $('sstvInfo').textContent = 'Could not load that image.'; URL.revokeObjectURL(url); };
+    img.src = url;
+  }
+  // Scale-to-cover + centre-crop `img` into a WxH RGBA buffer.
+  function sstvCoverDraw(img, W, H){
+    const canvas = document.createElement('canvas');
+    canvas.width = W; canvas.height = H;
+    const ctx = canvas.getContext('2d');
+    const srcRatio = img.width/img.height, dstRatio = W/H;
+    let sx,sy,sw,sh;
+    if(srcRatio > dstRatio){ sh = img.height; sw = sh*dstRatio; sx = (img.width-sw)/2; sy = 0; }
+    else { sw = img.width; sh = sw/dstRatio; sx = 0; sy = (img.height-sh)/2; }
+    ctx.drawImage(img, sx, sy, sw, sh, 0, 0, W, H);
+    return ctx.getImageData(0,0,W,H).data;
+  }
+  $('sstvDropZone').addEventListener('click', ()=>$('sstvFileInput').click());
+  $('sstvFileInput').addEventListener('change', e=>loadSstvImageFile(e.target.files[0]));
+  ['dragover','dragleave','drop'].forEach(evt=>{
+    $('sstvDropZone').addEventListener(evt, e=>{
+      e.preventDefault();
+      $('sstvDropZone').classList.toggle('drag', evt==='dragover');
+      if(evt==='drop') loadSstvImageFile(e.dataTransfer.files[0]);
+    });
+  });
+  $('sstvMode').addEventListener('change', updateSstvDurationEstimate);
+  updateSstvDurationEstimate();
+
+  // Writes one constant-frequency tone into `data` starting at
+  // state.offset, carrying state.phase forward continuously (no reset
+  // at segment boundaries) so adjacent tones glide rather than click —
+  // exactly how a real SSTV transmitter's VCO behaves.
+  function sstvAdvance(data, state, freqHz, ms, sr){
+    const n = Math.max(1, Math.round(ms/1000*sr));
+    const inc = 2*Math.PI*freqHz/sr;
+    let off = state.offset, ph = state.phase;
+    const end = Math.min(off+n, data.length);
+    for(let i=off;i<end;i++){ data[i] = Math.sin(ph); ph += inc; }
+    state.offset = off+n;
+    state.phase = ph;
+  }
+
+  function renderSstvBuffer(){
+    if(!S.sstv.img){ $('sstvInfo').textContent = 'Load a photo first.'; return; }
+    if(!S.audioCtx) S.audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+    const spec = SSTV_MODES[$('sstvMode').value];
+    const sr = S.audioCtx.sampleRate;
+    const totalMs = sstvModeDurationMs(spec);
+    const totalSamples = Math.ceil(totalMs/1000*sr) + 32;
+    const buffer = S.audioCtx.createBuffer(1, totalSamples, sr);
+    const data = buffer.getChannelData(0);
+    const st = {offset:0, phase:0};
+    const tone = (freq, ms)=> sstvAdvance(data, st, freq, ms, sr);
+
+    // --- VIS header (shared by every mode/family) ---
+    tone(1900,300); tone(1200,10); tone(1900,300);
+    tone(1200,30); // start bit
+    let parity = 0;
+    for(let i=0;i<7;i++){ const b=(spec.vis>>i)&1; parity ^= b; tone(b?1100:1300,30); }
+    tone(parity?1100:1300,30); // even-parity bit
+    tone(1200,30); // stop bit
+
+    const w = spec.width, h = spec.height;
+    const px = sstvCoverDraw(S.sstv.img, w, h); // RGBA, sized exactly for this mode
+    const freqOf = v => 1500 + v*(800/255);
+
+    if(spec.family === 'martin' || spec.family === 'scottie'){
+      // --- RGB-sequential (Martin / Scottie): scan Green, Blue, Red ---
+      const freqRGB = idx => 1500 + px[idx]*(800/255);
+      if(spec.family === 'scottie') tone(1200, 9); // starting sync, first line only
+      for(let row=0; row<h; row++){
+        const rowBase = row*w*4;
+        if(spec.family === 'martin'){
+          tone(1200, spec.syncMs);
+          tone(1500, spec.gapMs);
+          for(let c=0;c<w;c++) tone(freqRGB(rowBase+c*4+1), spec.pixelMs); // Green
+          tone(1500, spec.gapMs);
+          for(let c=0;c<w;c++) tone(freqRGB(rowBase+c*4+2), spec.pixelMs); // Blue
+          tone(1500, spec.gapMs);
+          for(let c=0;c<w;c++) tone(freqRGB(rowBase+c*4+0), spec.pixelMs); // Red
+        } else {
+          tone(1500, spec.sepMs);
+          for(let c=0;c<w;c++) tone(freqRGB(rowBase+c*4+1), spec.pixelMs); // Green
+          tone(1500, spec.sepMs);
+          for(let c=0;c<w;c++) tone(freqRGB(rowBase+c*4+2), spec.pixelMs); // Blue
+          tone(1200, spec.syncMs);
+          tone(1500, spec.porchMs);
+          for(let c=0;c<w;c++) tone(freqRGB(rowBase+c*4+0), spec.pixelMs); // Red
+        }
+      }
+    } else {
+      // --- Robot family: Y (full width) + colour-difference chroma
+      // (R−Y / B−Y, half width — each chroma sample averages a 2-pixel
+      // block). Robot 36 sends one chroma channel per line, alternating
+      // Cr on even rows / Cb on odd rows; Robot 72 sends both every line.
+      // A 1500Hz separator means "Cr (R−Y) follows"; 2300Hz means "Cb
+      // (B−Y) follows" — this lets a receiver re-sync after a dropout
+      // and tell the two chroma channels apart.
+      const n = w*h;
+      const Y = new Uint8ClampedArray(n), Cr = new Uint8ClampedArray(n), Cb = new Uint8ClampedArray(n);
+      for(let i=0;i<n;i++){
+        const r=px[i*4], g=px[i*4+1], b=px[i*4+2];
+        Y[i]  = 0.299*r + 0.587*g + 0.114*b;
+        Cr[i] = 128 + 0.5*r      - 0.418688*g - 0.081312*b;
+        Cb[i] = 128 - 0.168736*r - 0.331264*g + 0.5*b;
+      }
+      const halfW = w/2;
+      const chromaAt = (arr, row, j)=>{
+        const c0 = row*w + Math.min(w-1, j*2);
+        const c1 = row*w + Math.min(w-1, j*2+1);
+        return (arr[c0]+arr[c1])/2; // average the 2-pixel block this chroma sample covers
+      };
+      const chromaPixelMs = spec.chromaMs/halfW;
+
+      for(let row=0; row<h; row++){
+        const rowBase = row*w;
+        tone(1200, spec.syncMs);
+        tone(1500, spec.porchMs);
+        for(let c=0;c<w;c++) tone(freqOf(Y[rowBase+c]), spec.yMs/w); // luminance, full width
+
+        if(spec.family === 'robot36'){
+          const sendCr = (row % 2 === 0); // even rows: Cr (R−Y); odd rows: Cb (B−Y)
+          tone(sendCr ? 1500 : 2300, spec.sepMs);
+          tone(1500, spec.porch2Ms);
+          const arr = sendCr ? Cr : Cb;
+          for(let j=0;j<halfW;j++) tone(freqOf(chromaAt(arr, row, j)), chromaPixelMs);
+        } else { // robot72 — both chroma channels, every line
+          tone(1500, spec.sepMs); // Cr next
+          tone(1500, spec.porch2Ms);
+          for(let j=0;j<halfW;j++) tone(freqOf(chromaAt(Cr, row, j)), chromaPixelMs);
+          tone(2300, spec.sepMs); // Cb next
+          tone(1500, spec.porch2Ms);
+          for(let j=0;j<halfW;j++) tone(freqOf(chromaAt(Cb, row, j)), chromaPixelMs);
+        }
+      }
+    }
+
+    S.sstv.renderedBuffer = buffer;
+    $('sstvDurationHint').textContent = `Rendered — ${buffer.duration.toFixed(1)} s of audio (${spec.label}, VIS ${spec.vis}).`;
+    $('btnSstvPreview').disabled = false;
+    $('btnSstvTx').disabled = false;
+  }
+
+  function sstvForceStop(){
+    if(S.sstv.currentSource){
+      try{ S.sstv.currentSource.onended = null; S.sstv.currentSource.stop(); }catch(e){}
+      try{ S.sstv.currentSource.disconnect(); }catch(e){}
+      S.sstv.currentSource = null;
+    }
+    cancelAnimationFrame(S.sstv.progressRAF);
+    $('sstvProgressFill').style.width = '0%';
+  }
+
+  function sstvAnimateProgress(durationMs){
+    S.sstv.txStartTime = performance.now();
+    const step = ()=>{
+      const pct = Math.min(100, ((performance.now()-S.sstv.txStartTime)/durationMs)*100);
+      $('sstvProgressFill').style.width = pct+'%';
+      if(pct < 100) S.sstv.progressRAF = requestAnimationFrame(step);
+      else setTimeout(()=>{ $('sstvProgressFill').style.width = '0%'; }, 400);
+    };
+    step();
+  }
+
+  function playSstvBuffer(toRadio){
+    if(!S.sstv.renderedBuffer) return;
+    sstvForceStop();
+    const src = S.audioCtx.createBufferSource();
+    src.buffer = S.sstv.renderedBuffer;
+    const gain = S.audioCtx.createGain();
+    gain.gain.value = toRadio ? S.sstv.drive : 0.7;
+    src.connect(gain);
+    if(toRadio && S.outDest) gain.connect(S.radioOut);
+    else gain.connect(ensurePreviewRouting());
+    S.sstv.currentSource = src;
+    src.onended = ()=>{ if(S.sstv.currentSource === src) S.sstv.currentSource = null; };
+    src.start();
+    sstvAnimateProgress(src.buffer.duration*1000);
+    return src;
+  }
+
+  $('btnSstvRender').addEventListener('click', renderSstvBuffer);
+  $('btnSstvPreview').addEventListener('click', ()=>{ if(S.sstv.renderedBuffer) playSstvBuffer(false); });
+  $('btnSstvTx').addEventListener('click', async ()=>{
+    if(!S.sstv.renderedBuffer) return;
+    await enablePTT(S.sstv.renderedBuffer.duration*1000 + S.txTailMs + 3000);
+    try{
+      const src = playSstvBuffer(true);
+      src.onended = ()=>{
+        if(S.sstv.currentSource === src) S.sstv.currentSource = null;
+        setTimeout(()=> disablePTT(), S.txTailMs);
+      };
+      const expectedMs = S.sstv.renderedBuffer.duration*1000 + S.txTailMs + 1500;
+      setTimeout(()=>{ if($('vfoRxTx').textContent==='TX') disablePTT(); }, expectedMs);
+    }catch(err){
+      console.error('SSTV transmit failed to start', err);
+      disablePTT();
+    }
+  });
+  bindRange('sstvDriveSlider', v=>{ S.sstv.drive = v/100; $('sstvDriveVal').textContent = Math.round(v)+'%'; });
+
+  // =====================================================================
   // PTT unified control
   // =====================================================================
   let pttSafetyTimer = null;
@@ -4639,6 +4966,7 @@
     stopTune();
     cwForceStop();
     rttyForceStop();
+    sstvForceStop();
     imgForceStop(); // also clears the waterfall TX-preview overlay
     await stopVoiceTx();
     nsForceStop();
