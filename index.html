@@ -182,11 +182,6 @@
     background:var(--panel);border:1px solid var(--line);border-radius:6px;
   }
   .dock-center .rack{height:100%;display:flex;flex-direction:column;overflow-y:auto;}
-  /* scope-wrap is the only thing in the centre rack — stretch it to
-     fill the full height instead of letting it size to its own content,
-     so its internal flex layout (see .scope-canvases) is what absorbs
-     size changes from the bottom dock, not the rack's scrollbar. */
-  .dock-center .rack > .scope-wrap{flex:1 1 auto;min-height:0;}
 
   /* When the centre dock has no panels left in it (e.g. the spectrum/
      waterfall panel's been closed and nothing else has been dragged
@@ -361,19 +356,10 @@
   .atu-status-row span#atuStatus{color:var(--phosphor);text-transform:none;letter-spacing:0;}
 
   /* waterfall */
-  /* scope-wrap fills whatever height dock-center hands it (100% of the
-     .rack, which itself is 100% of dock-center) and lays its children
-     out as a column: fixed-height head, a canvases area that flexes to
-     absorb whatever space is left, then the fixed-height freq strip and
-     hint. That way, when the bottom dock opens/closes/resizes and
-     dock-center's available height changes, the flexible canvases area
-     — not the freq strip below it — is what grows or shrinks, so the
-     frequency indicators always stay right under the waterfall instead
-     of getting pushed off-screen or covered by the bottom panel. */
-  .scope-wrap{background:var(--panel);border:1px solid var(--line);border-radius:6px;overflow:hidden;height:100%;display:flex;flex-direction:column;}
+  .scope-wrap{background:var(--panel);border:1px solid var(--line);border-radius:6px;overflow:hidden;}
   .scope-head{
     display:flex;justify-content:space-between;align-items:center;padding:8px 12px;
-    border-bottom:1px solid var(--line);flex:0 0 auto;
+    border-bottom:1px solid var(--line);
   }
   .scope-head h3{margin:0;}
   /* frequency axis strip along the bottom of the waterfall — several
@@ -383,7 +369,6 @@
   .scope-freqs{
     display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;
     color:var(--text-dim);padding:5px 10px 6px;background:var(--panel-2);border-top:1px solid var(--line);
-    flex:0 0 auto;
   }
   .scope-freqs__tick{position:relative;padding-top:6px;white-space:nowrap;}
   .scope-freqs__tick::before{
@@ -392,58 +377,17 @@
   }
   .scope-freqs__tick:first-child::before{left:0;transform:none;}
   .scope-freqs__tick:last-child::before{left:auto;right:0;transform:none;}
-
-  /* top ruler + channel markers — mirrors the bottom .scope-freqs axis
-     but sits above the canvases, with tick marks pointing DOWN toward
-     the waterfall (instead of up), plus a channel-tag strip underneath
-     it for the coloured pill markers. Both live in .scope-topbar, which
-     is flex:0 0 auto so it takes only the height its content needs and
-     leaves the rest to .scope-canvases (see below). */
-  .scope-topbar{flex:0 0 auto;background:var(--panel-2);border-bottom:1px solid var(--line);}
-  .scope-ruler{
-    display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;
-    color:var(--text-dim);padding:5px 10px 6px;
-  }
-  .scope-ruler__tick{position:relative;padding-bottom:6px;white-space:nowrap;}
-  .scope-ruler__tick::before{
-    content:"";position:absolute;bottom:0;left:50%;width:1px;height:4px;
-    background:var(--text-dim);opacity:.6;transform:translateX(-50%);
-  }
-  .scope-ruler__tick:first-child::before{left:0;transform:none;}
-  .scope-ruler__tick:last-child::before{left:auto;right:0;transform:none;}
-
-  /* channel-marker pills — absolutely positioned by Hz within the span
-     (left:%), stacked into extra rows when two tags would overlap, à la
-     a WebSDR-style "Voice 80m"/callsign tag strip. Height is set on the
-     container from JS once the row count is known, so .scope-topbar
-     (and therefore how much room is left for the canvases) grows only
-     as much as the current markers actually need. */
-  .scope-channels{position:relative;padding:1px 4px 5px;}
-  .scope-channels.is-empty{padding:0;}
-  .scope-channel-tag{
-    position:absolute;transform:translateX(-50%);white-space:nowrap;
-    font-family:var(--mono);font-size:9.5px;font-weight:700;letter-spacing:.02em;
-    padding:2px 7px;border-radius:9px;color:#0c0f0a;line-height:1.5;
-    box-shadow:0 1px 3px rgba(0,0,0,.4);pointer-events:none;
-  }
-
   .rx-audio-row{display:flex;align-items:center;gap:10px;padding:8px 12px;border-top:1px solid var(--line);}
   .rx-audio-row .btn{width:auto;flex:none;justify-content:center;padding:7px 12px;}
   .zoom-row .vol-wrap{display:flex;align-items:center;gap:6px;margin-left:8px;}
   .zoom-row .vol-wrap span{font-family:var(--mono);font-size:9px;color:var(--text-dim);letter-spacing:.05em;}
   .zoom-row .vol-wrap input[type=range]{width:80px;}
-  /* height is no longer a fixed/vh-based clamp — the canvas flexes to
-     fill whatever room .scope-canvases has left after the spectrum strip,
-     so it shrinks in step with dock-center rather than overflowing it. */
-  #waterfall{display:block;width:100%;flex:1 1 auto;min-height:80px;background:#000;image-rendering:pixelated;}
+  #waterfall{display:block;width:100%;height:clamp(200px,38vh,420px);background:#000;image-rendering:pixelated;}
   .scope-foot{display:flex;gap:8px;padding:8px 12px;border-top:1px solid var(--line);flex-wrap:wrap;}
   .scope-foot .btn{width:auto;flex:1;min-width:140px;justify-content:center;}
 
-  /* spectrum line graph, sits above the waterfall like a classic SDR panadapter.
-     Kept as a modest, mostly-fixed strip (it still has some vh give so it
-     doesn't vanish on tall layouts) — the waterfall below is what absorbs
-     the rest of the available height. */
-  #spectrumCanvas{display:block;width:100%;flex:0 0 auto;height:clamp(50px,14vh,130px);background:#04050a;border-bottom:1px solid var(--line);}
+  /* spectrum line graph, sits above the waterfall like a classic SDR panadapter */
+  #spectrumCanvas{display:block;width:100%;height:clamp(70px,14vh,130px);background:#04050a;border-bottom:1px solid var(--line);}
   .zoom-row{display:flex;align-items:center;gap:4px;flex-wrap:wrap;row-gap:6px;}
   .zoom-btn{
     font-family:var(--mono);font-size:13px;font-weight:700;line-height:1;color:var(--text-dim);
@@ -454,13 +398,8 @@
   .span-readout{font-family:var(--mono);font-size:10px;color:var(--text-dim);padding:0 4px;white-space:nowrap;}
 
   /* the two scope canvases stacked in a positioned wrapper so the stats
-     overlay below can sit on top of them, pinned to a corner. This
-     wrapper is the part of scope-wrap that actually flexes — it grows
-     to fill dock-center when the bottom dock is collapsed/closed and
-     shrinks the instant it opens or is dragged taller, so the freq
-     strip and hint pinned below it are pushed up in step and never end
-     up hidden underneath the bottom panel. */
-  .scope-canvases{position:relative;flex:1 1 auto;min-height:0;display:flex;flex-direction:column;overflow:hidden;}
+     overlay below can sit on top of them, pinned to a corner */
+  .scope-canvases{position:relative;}
 
   /* small transparent stats HUD overlaid on the spectrum/waterfall,
      the same idea as a classic WebSDR info box — frame rate, FFT
@@ -684,8 +623,6 @@
      Web Audio analyser already used elsewhere in this file).
      ===================================================================== */
   .floatwin.rttydec-win{min-width:360px;min-height:200px;}
-  .floatwin.cwdec-win{min-width:340px;min-height:200px;}
-  .cwdec{display:flex;flex-direction:column;height:100%;}
   .rttydec{display:flex;flex-direction:column;height:100%;}
   .rttydec__sub{
     display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid var(--line);
@@ -914,16 +851,6 @@
             <button class="zoom-btn" id="btnToggleStats" title="Show/hide the stats overlay" style="margin-left:8px;">ⓘ</button>
           </div>
         </div>
-        <!-- top frequency ruler + channel-marker tags, like a classic
-             SDR panadapter strip: fine tick/Hz ruler, and colour-coded
-             pill tags for the tone points this build actually knows
-             about (CW TX/decode pitch, RTTY mark/space), positioned
-             along the same Hz axis and stacked into extra rows so they
-             never overlap each other. -->
-        <div class="scope-topbar">
-          <div class="scope-ruler" id="scopeRulerTop"></div>
-          <div class="scope-channels" id="scopeChannels"></div>
-        </div>
         <div class="scope-canvases">
           <canvas id="spectrumCanvas"></canvas>
           <canvas id="waterfall"></canvas>
@@ -938,8 +865,7 @@
           </div>
         </div>
         <div class="scope-freqs" id="scopeFreqs"></div>
-        <div class="hint" style="padding:8px 12px 10px;border-top:1px solid var(--line);flex:0 0 auto;">Plays RX audio through the device set in <b>Settings → Audio → Monitor speaker</b>.</div>
-        <div class="hint" style="padding:0 12px 8px;flex:0 0 auto;">Coloured tags above the waterfall mark known tone points — CW TX/decode pitch and RTTY mark/space — wherever they fall inside the current span.</div>
+        <div class="hint" style="padding:8px 12px 10px;border-top:1px solid var(--line);">Plays RX audio through the device set in <b>Settings → Audio → Monitor speaker</b>.</div>
       </div>
     </div><!-- /rack -->
     </div><!-- /dock-center -->
@@ -1468,11 +1394,11 @@
               <span class="ext-row__summary">Not enabled on this receiver</span>
             </span>
           </button>
-          <button type="button" class="ext-row" id="btnOpenCwDecoder" title="Open the CW (Morse) decoder tool window">
+          <button type="button" class="ext-row" disabled title="Not enabled on this receiver">
             <span class="ext-row__icon">·–</span>
             <span class="ext-row__text">
               <span class="ext-row__title">CW Decoder</span>
-              <span class="ext-row__summary">Live Morse copy with auto speed tracking — no WPM to dial in.</span>
+              <span class="ext-row__summary">Not enabled on this receiver</span>
             </span>
           </button>
           <button type="button" class="ext-row" disabled title="Not enabled on this receiver">
@@ -3233,7 +3159,6 @@
     const scopeResizeObserver = new ResizeObserver(()=>{
       resizeCanvas();
       resizeSpecCanvas();
-      renderChannelMarkers();
     });
     scopeResizeObserver.observe(canvas.parentElement);
   }
@@ -3410,98 +3335,26 @@
     if(S.waterfall.running) animateWaterfall();
   });
 
-  function buildRulerTicks(el, tickCount){
-    if(!el) return;
-    el.innerHTML = '';
-    for(let i=0;i<tickCount;i++){
-      const t = i/(tickCount-1);
-      const hz = Math.round(S.waterfall.min + t*(S.waterfall.max-S.waterfall.min));
-      const tick = document.createElement('span');
-      tick.className = el.id === 'scopeRulerTop' ? 'scope-ruler__tick' : 'scope-freqs__tick';
-      tick.textContent = hz+' Hz';
-      el.appendChild(tick);
-    }
-  }
-
   function updateFreqLabels(){
     $('wfSpanReadout').textContent = Math.round(S.waterfall.max-S.waterfall.min)+' Hz span';
     $('wfMin').value = S.waterfall.min;
     $('wfMax').value = S.waterfall.max;
 
-    // Rebuild the frequency axis strips — top ruler and bottom strip —
-    // as several evenly spaced tick labels across the current span,
-    // rather than just min/centre/max. Both share the same S.waterfall
-    // min/max, so they always agree with each other and with the
-    // channel markers rendered over the top ruler.
-    buildRulerTicks($('scopeRulerTop'), 5);
-    buildRulerTicks($('scopeFreqs'), 5);
-    renderChannelMarkers();
-  }
-
-  // =====================================================================
-  // CHANNEL MARKERS — coloured pill tags above the waterfall, one per
-  // tone point this build actually knows about (CW TX tone, CW decode
-  // listen frequency, RTTY mark/space tones), positioned along the same
-  // Hz axis as the ruler. Markers outside the current span are skipped;
-  // markers that would visually overlap are pushed onto additional
-  // stacked rows instead of hiding one of them.
-  // =====================================================================
-  const CHANNEL_MARKER_ROW_H = 20; // px per stacked row
-  function getChannelMarkers(){
-    const list = [];
-    const cwTone = parseFloat($('cwTone').value);
-    if(!isNaN(cwTone)) list.push({hz:cwTone, label:'CW TX', color:'var(--amber)'});
-    const cwDecodeFreq = parseFloat($('cwDecodeFreq').value);
-    if(!isNaN(cwDecodeFreq)) list.push({hz:cwDecodeFreq, label:'CW RX', color:'var(--phosphor)'});
-    const mark = parseFloat($('rttyMark').value);
-    const shift = parseFloat($('rttyShift').value);
-    const reverse = $('rttyReverse') && $('rttyReverse').checked;
-    if(!isNaN(mark)){
-      list.push({hz:mark, label:'RTTY Mark', color:'var(--teal)'});
-      if(!isNaN(shift)){
-        const space = reverse ? mark - shift : mark + shift;
-        list.push({hz:space, label:'RTTY Space', color:'var(--red)'});
+    // Rebuild the frequency axis strip as several evenly spaced tick
+    // labels across the current span, rather than just min/centre/max.
+    const freqsEl = $('scopeFreqs');
+    if(freqsEl){
+      const TICK_COUNT = 5;
+      freqsEl.innerHTML = '';
+      for(let i=0;i<TICK_COUNT;i++){
+        const t = i/(TICK_COUNT-1);
+        const hz = Math.round(S.waterfall.min + t*(S.waterfall.max-S.waterfall.min));
+        const tick = document.createElement('span');
+        tick.className = 'scope-freqs__tick';
+        tick.textContent = hz+' Hz';
+        freqsEl.appendChild(tick);
       }
     }
-    return list;
-  }
-  function renderChannelMarkers(){
-    const el = $('scopeChannels');
-    if(!el) return;
-    const min = S.waterfall.min, max = S.waterfall.max, span = max-min;
-    const visible = getChannelMarkers()
-      .filter(m => span>0 && m.hz>=min && m.hz<=max)
-      .sort((a,b)=>a.hz-b.hz);
-
-    el.innerHTML = '';
-    el.classList.toggle('is-empty', visible.length===0);
-    if(!visible.length){ el.style.height = '0px'; return; }
-
-    // Greedy row assignment: walk markers left→right, put each one on the
-    // first row whose previous tag (estimated by label length) wouldn't
-    // visually collide with it, otherwise start/continue the next row.
-    const containerWidth = Math.max(1, el.getBoundingClientRect().width);
-    const rowRightEdge = []; // px right-edge of the last tag placed in each row
-    visible.forEach(m=>{
-      const pct = (m.hz-min)/span;
-      const xPx = pct*containerWidth;
-      const estWidthPx = 16 + m.label.length*5.6; // rough pill width incl. padding
-      let row = 0;
-      while(rowRightEdge[row] !== undefined && xPx - estWidthPx/2 < rowRightEdge[row] + 4){
-        row++;
-      }
-      rowRightEdge[row] = xPx + estWidthPx/2;
-
-      const tag = document.createElement('span');
-      tag.className = 'scope-channel-tag';
-      tag.textContent = m.label;
-      tag.style.left = (pct*100)+'%';
-      tag.style.top = (row*CHANNEL_MARKER_ROW_H)+'px';
-      tag.style.background = m.color;
-      tag.title = m.label+' — '+Math.round(m.hz)+' Hz';
-      el.appendChild(tag);
-    });
-    el.style.height = (rowRightEdge.length*CHANNEL_MARKER_ROW_H + 4)+'px';
   }
 
   // =====================================================================
@@ -4219,7 +4072,7 @@
     if(v > wpm){ v = wpm; $('cwFarnsworth').value = wpm; }
     $('cwFarnsworthVal').textContent = Math.round(v)+' WPM' + (v>=wpm ? ' (off)' : '');
   });
-  bindRange('cwTone', v=>{ $('cwToneVal').textContent = Math.round(v)+' Hz'; renderChannelMarkers(); });
+  bindRange('cwTone', v=>{ $('cwToneVal').textContent = Math.round(v)+' Hz'; });
   bindRange('cwDriveSlider', v=>{ S.cw.drive = v/100; $('cwDriveVal').textContent = Math.round(v)+'%'; });
 
   function cwFreqToBin(freq){
@@ -4310,7 +4163,7 @@
     S.cw.symbolBuffer = '';
     cwUpdateReadout();
   });
-  bindRange('cwDecodeFreq', v=>{ $('cwDecodeFreqVal').textContent = Math.round(v)+' Hz'; renderChannelMarkers(); });
+  bindRange('cwDecodeFreq', v=>{ $('cwDecodeFreqVal').textContent = Math.round(v)+' Hz'; });
   bindRange('cwDecodeWpm', v=>{ $('cwDecodeWpmVal').textContent = Math.round(v)+' WPM'; });
   bindRange('cwSquelch', v=>{ $('cwSquelchVal').textContent = Math.round(v)+'%'; });
 
@@ -4562,9 +4415,9 @@
     }
   });
 
-  bindRange('rttyMark', v=>{ $('rttyMarkVal').textContent = Math.round(v)+' Hz'; updateRttySpaceLabel(); renderChannelMarkers(); });
-  bindRange('rttyShift', v=>{ $('rttyShiftVal').textContent = Math.round(v)+' Hz'; updateRttySpaceLabel(); renderChannelMarkers(); });
-  $('rttyReverse').addEventListener('change', ()=>{ updateRttySpaceLabel(); renderChannelMarkers(); });
+  bindRange('rttyMark', v=>{ $('rttyMarkVal').textContent = Math.round(v)+' Hz'; updateRttySpaceLabel(); });
+  bindRange('rttyShift', v=>{ $('rttyShiftVal').textContent = Math.round(v)+' Hz'; updateRttySpaceLabel(); });
+  $('rttyReverse').addEventListener('change', updateRttySpaceLabel);
   document.querySelectorAll('#txSubRTTY .btn-row .btn[data-shift]').forEach(btn=>{
     btn.addEventListener('click', ()=>{
       $('rttyShift').value = btn.dataset.shift;
@@ -6803,327 +6656,6 @@
   }
 
   $('btnOpenRttyDecoder').addEventListener('click', openRttyDecoderWindow);
-
-  // =====================================================================
-  // CW (MORSE) DECODER — extension window. Same floating-window shell and
-  // shared component styles (rttydec__*) as the FSK/RTTY decoder above,
-  // but a much simpler engine to match: CW is just on/off keying, so this
-  // polls S.analyser (like the built-in CW panel's own decode loop) rather
-  // than tapping raw PCM. The one real upgrade over that built-in panel is
-  // that speed isn't a dial the operator has to guess — dot length is
-  // tracked from the incoming keying and continuously re-estimated, so it
-  // follows the sender instead of needing a fixed WPM setting.
-  // =====================================================================
-  const CD = {
-    win:null, body:null, listening:false, rafId:null,
-    dotLen:70, // ms — adaptive running estimate of one dot's duration
-    decodeState:null, decodeStateStart:0, symbolBuffer:'',
-    lineStarted:false, lineBuffer:'', lineTimestamp:'', lastCharTime:0,
-    lines:[], // {ts, text}
-    level:0, sigOn:false, decFlashUntil:0,
-    data:null, // scratch Uint8Array reused for the tone magnitude read
-    el:{},
-  };
-
-  function cdFreqBin(freq){
-    if(!S.analyser || !S.audioCtx) return null;
-    const nyquist = S.audioCtx.sampleRate/2;
-    const binHz = nyquist/S.analyser.frequencyBinCount;
-    return Math.max(0, Math.min(S.analyser.frequencyBinCount-1, Math.round(freq/binHz)));
-  }
-  function cdMagAtFreq(data, freq){
-    const bin = cdFreqBin(freq);
-    if(bin===null) return 0;
-    let m=0,c=0;
-    for(let b=Math.max(0,bin-1); b<=Math.min(data.length-1,bin+1); b++){ m+=data[b]; c++; }
-    return c ? m/c : 0;
-  }
-
-  function cdHandleChar(ch){
-    CD.decFlashUntil = performance.now() + 250;
-    if(!CD.lineStarted){ CD.lineStarted = true; CD.lineTimestamp = rdNowStamp(); CD.lineBuffer = ''; }
-    CD.lineBuffer += ch;
-    CD.lastCharTime = performance.now();
-    cdRenderLog(true);
-  }
-  function cdFlushChar(){
-    if(!CD.symbolBuffer) return;
-    const ch = MORSE_REVERSE[CD.symbolBuffer] || '?';
-    CD.symbolBuffer = '';
-    cdHandleChar(ch);
-  }
-  function cdFlushLine(){
-    if(CD.lineStarted && CD.lineBuffer.length){
-      CD.lines.push({ts:CD.lineTimestamp, text:CD.lineBuffer});
-      if(CD.lines.length > 500) CD.lines.shift();
-    }
-    CD.lineStarted = false; CD.lineBuffer = '';
-    cdRenderLog(false);
-  }
-  function cdRenderLog(liveOnly){
-    if(!CD.el.log) return;
-    const showTs = CD.el.timestamp.checked;
-    const rows = CD.lines.map(l => (showTs ? `<span class="rd-line-ts">${l.ts}</span>` : '') + rdEscape(l.text));
-    if(CD.lineStarted){
-      rows.push((showTs ? `<span class="rd-line-ts">${CD.lineTimestamp}</span>` : '') + rdEscape(CD.lineBuffer));
-    }
-    CD.el.log.innerHTML = rows.length ? rows.join('\n') : '(listening…)';
-    if(CD.el.autoscroll.checked) CD.el.log.scrollTop = CD.el.log.scrollHeight;
-  }
-
-  // Scrolling keying trace — shifts the canvas 2px left every frame and
-  // draws a fresh column on the right whose height/brightness reflects
-  // whether the tone is on right now, so the dot/dash pattern reads like a
-  // strip-chart recorder rather than a single twitchy meter.
-  function cdDrawKeyingTrace(isOn, level){
-    const canvas = CD.el.hist;
-    if(!canvas) return;
-    const cw = canvas.clientWidth||400, ch = canvas.clientHeight||118;
-    const ctx = canvas.getContext('2d');
-    if(canvas.width !== cw || canvas.height !== ch){
-      canvas.width = cw; canvas.height = ch;
-      ctx.fillStyle = '#05060a'; ctx.fillRect(0,0,cw,ch);
-    }
-    const STEP = 2;
-    ctx.drawImage(canvas, STEP, 0, cw-STEP, ch, 0, 0, cw-STEP, ch);
-    ctx.fillStyle = '#05060a';
-    ctx.fillRect(cw-STEP, 0, STEP, ch);
-    if(isOn){
-      const barH = Math.max(2, level*ch);
-      ctx.fillStyle = 'rgba(255,180,84,.9)';
-      ctx.fillRect(cw-STEP, ch-barH, STEP, barH);
-    }
-    ctx.strokeStyle = 'rgba(217,230,211,.15)';
-    ctx.beginPath(); ctx.moveTo(0,ch-1); ctx.lineTo(cw,ch-1); ctx.stroke();
-  }
-
-  function cdUpdateFootbar(){
-    const el = CD.el;
-    if(!el.fSpeed) return;
-    el.fSpeed.textContent = Math.round(1200/CD.dotLen)+' WPM';
-    const now = performance.now();
-    el.dotSig.classList.toggle('on', CD.sigOn);
-    el.dotDec.classList.toggle('on', now < CD.decFlashUntil);
-  }
-
-  function cdLoop(){
-    if(!CD.listening) return;
-    CD.rafId = requestAnimationFrame(cdLoop);
-    if(!S.analyser || !S.audioCtx) return;
-    if(!CD.data || CD.data.length !== S.analyser.frequencyBinCount){
-      CD.data = new Uint8Array(S.analyser.frequencyBinCount);
-    }
-    S.analyser.getByteFrequencyData(CD.data);
-
-    const el = CD.el;
-    const toneHz = parseFloat(el.tone.value) || 600;
-    const mag = cdMagAtFreq(CD.data, toneHz);
-    CD.level = mag/255;
-    el.audioFill.style.width = Math.round(CD.level*100)+'%';
-    el.audioDb.textContent = (CD.level>0 ? Math.round(20*Math.log10(CD.level)) : -60)+' dB';
-
-    const thresholdVal = (parseFloat(el.squelch.value)/100)*255;
-    const isOn = mag > thresholdVal;
-    CD.sigOn = isOn;
-    const now = performance.now();
-
-    if(CD.decodeState === null){
-      CD.decodeState = isOn;
-      CD.decodeStateStart = now;
-    } else if(isOn !== CD.decodeState){
-      const durationMs = now - CD.decodeStateStart;
-      if(CD.decodeState === true){
-        // a mark (tone-on) just ended — classify dot/dash against the
-        // current adaptive estimate, then let that same measurement pull
-        // the estimate a little further toward the sender's actual speed.
-        const isDot = durationMs < CD.dotLen*2.2;
-        CD.symbolBuffer += (isDot ? '.' : '-');
-        CD.dotLen = isDot ? (CD.dotLen*0.7 + durationMs*0.3) : (CD.dotLen*0.9 + (durationMs/3)*0.1);
-        CD.dotLen = Math.max(20, Math.min(240, CD.dotLen));
-      } else {
-        // a space (tone-off) just ended
-        if(durationMs >= CD.dotLen*5){
-          cdFlushChar();
-          if(!CD.lineStarted){ CD.lineStarted = true; CD.lineTimestamp = rdNowStamp(); }
-          CD.lineBuffer += ' ';
-          cdRenderLog(true);
-        } else if(durationMs >= CD.dotLen*1.5){
-          cdFlushChar();
-        }
-      }
-      CD.decodeState = isOn;
-      CD.decodeStateStart = now;
-    } else if(!isOn){
-      const idleMs = now - CD.decodeStateStart;
-      if(idleMs > CD.dotLen*5 && CD.symbolBuffer) cdFlushChar();
-      if(CD.lineStarted && (now - CD.lastCharTime) > 3000) cdFlushLine();
-    }
-
-    cdUpdateFootbar();
-    if(el.spectrum.checked) cdDrawKeyingTrace(isOn, CD.level);
-  }
-
-  function cdSetListening(on){
-    const el = CD.el;
-    CD.listening = on;
-    if(on){
-      if(!S.analyser){ alert('Connect DE‑19 audio first (left panel).'); CD.listening = false; }
-      else{ CD.decodeState = null; CD.symbolBuffer = ''; cdLoop(); }
-    } else {
-      cancelAnimationFrame(CD.rafId);
-    }
-    el.badge.textContent = CD.listening ? 'RUNNING' : 'STOPPED';
-    el.badge.classList.toggle('stopped', !CD.listening);
-    el.stopBtn.textContent = CD.listening ? '■ Stop' : '▶ Start';
-    el.stopBtn.classList.toggle('is-stopped', !CD.listening);
-  }
-
-  function cdBuildWindowHtml(){
-    return `
-      <div class="cwdec">
-        <div class="rttydec__sub">
-          <span class="rttydec__badge stopped" data-el="badge">STOPPED</span>
-          <button type="button" class="rttydec__stopbtn is-stopped" data-el="stopBtn">▶ Start</button>
-          <span style="flex:1;"></span>
-          <button type="button" class="rttydec__iconbtn" data-act="copy" title="Copy decoded text">⧉</button>
-          <button type="button" class="rttydec__iconbtn" data-act="download" title="Download decoded text">⇩</button>
-          <button type="button" class="rttydec__iconbtn" data-act="clear" title="Clear log">🗑</button>
-        </div>
-        <div class="rttydec__grid" style="grid-template-columns:1fr 1fr 1fr;">
-          <div><label>Tone</label><input type="number" data-el="tone" value="600" min="200" max="1200" step="5"></div>
-          <div><label>Squelch %</label><input type="number" data-el="squelch" value="35" min="0" max="100" step="1"></div>
-          <div><label>Preset</label>
-            <select data-el="preset">
-              <option value="">—</option>
-              <option value="400">400 Hz</option>
-              <option value="500">500 Hz</option>
-              <option value="600" selected>600 Hz</option>
-              <option value="700">700 Hz</option>
-              <option value="800">800 Hz</option>
-            </select>
-          </div>
-        </div>
-        <div class="rttydec__encrow">
-          <button type="button" class="rttydec__iconbtn" data-act="syncTx" title="Match the Radio → CW tab's TX tone">↳ TX tone</button>
-          <button type="button" class="rttydec__iconbtn" data-act="syncRx" title="Match the Radio → CW tab's listen frequency">↳ RX tone</button>
-          <span style="flex:1;"></span>
-          <span style="font-family:var(--mono);font-size:9px;color:var(--text-dim);">Speed tracks automatically</span>
-        </div>
-        <div class="rttydec__toggles">
-          <label class="rttydec__switch"><input type="checkbox" data-el="timestamp" checked> Timestamp</label>
-          <label class="rttydec__switch"><input type="checkbox" data-el="autoscroll" checked> Auto-scroll</label>
-          <label class="rttydec__switch"><input type="checkbox" data-el="spectrum" checked> Keying trace</label>
-        </div>
-        <div class="rttydec__specwrap">
-          <canvas class="rttydec__hist" data-el="hist"></canvas>
-        </div>
-        <div class="rttydec__log" data-el="log">(listening…)</div>
-        <div class="rttydec__footbar">
-          <div class="rttydec__dots">
-            <span class="rttydec__dotitem"><span class="rttydec__dot sig" data-el="dotSig"></span>SIGNAL</span>
-            <span class="rttydec__dotitem"><span class="rttydec__dot dec" data-el="dotDec"></span>DECODE</span>
-          </div>
-          <div class="rttydec__stats">
-            <span>SPEED <b data-el="fSpeed">— WPM</b></span>
-            <span class="rttydec__audiobar"><span class="bar"><span class="fill" data-el="audioFill"></span></span><b data-el="audioDb">-60 dB</b></span>
-          </div>
-        </div>
-      </div>`;
-  }
-
-  function openCwDecoderWindow(){
-    if(CD.win){
-      CD.win.style.zIndex = 200;
-      return;
-    }
-    const win = document.createElement('div');
-    win.className = 'floatwin cwdec-win';
-    win.style.left = '120px';
-    win.style.top = '100px';
-    win.style.width = '420px';
-    win.style.height = '520px';
-
-    const head = document.createElement('div');
-    head.className = 'floatwin__head';
-    head.innerHTML = `<span class="floatwin__title">·– CW Decoder</span>
-      <button type="button" class="floatwin__btn" data-act="close" title="Close">✕</button>`;
-
-    const body = document.createElement('div');
-    body.className = 'floatwin__body';
-    body.style.padding = '0';
-    body.style.display = 'flex';
-    body.innerHTML = cdBuildWindowHtml();
-
-    win.appendChild(head);
-    win.appendChild(body);
-    $('floatLayer').appendChild(win);
-    CD.win = win;
-    CD.body = body;
-
-    const el = {};
-    body.querySelectorAll('[data-el]').forEach(node=> el[node.dataset.el] = node);
-    CD.el = el;
-
-    el.preset.addEventListener('change', ()=>{ if(el.preset.value) el.tone.value = el.preset.value; });
-    body.querySelector('[data-act="syncTx"]').addEventListener('click', ()=>{
-      el.tone.value = Math.round(parseFloat($('cwTone').value)||600);
-      el.preset.value = '';
-    });
-    body.querySelector('[data-act="syncRx"]').addEventListener('click', ()=>{
-      el.tone.value = Math.round(parseFloat($('cwDecodeFreq').value)||600);
-      el.preset.value = '';
-    });
-
-    el.stopBtn.addEventListener('click', ()=> cdSetListening(!CD.listening));
-    el.timestamp.addEventListener('change', ()=> cdRenderLog(false));
-
-    body.querySelector('[data-act="copy"]').addEventListener('click', ()=>{
-      const text = CD.lines.map(l=> (el.timestamp.checked? l.ts+' ':'')+l.text).join('\n');
-      navigator.clipboard?.writeText(text).catch(()=>{});
-    });
-    body.querySelector('[data-act="download"]').addEventListener('click', ()=>{
-      const text = CD.lines.map(l=> (el.timestamp.checked? l.ts+' ':'')+l.text).join('\n');
-      const blob = new Blob([text], {type:'text/plain'});
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = `cw-decode-${Date.now()}.txt`;
-      document.body.appendChild(a); a.click(); a.remove();
-      setTimeout(()=> URL.revokeObjectURL(a.href), 2000);
-    });
-    body.querySelector('[data-act="clear"]').addEventListener('click', ()=>{
-      CD.lines = []; CD.lineStarted = false; CD.lineBuffer = '';
-      cdRenderLog(false);
-    });
-
-    function closeWin(){
-      cdSetListening(false);
-      win.remove();
-      CD.win = null; CD.body = null; CD.el = {};
-    }
-    head.querySelector('[data-act="close"]').addEventListener('click', closeWin);
-
-    // Drag the window by its header — same mechanic as the dock pop-outs
-    // and the RTTY decoder window above.
-    let dragging = false, startX=0, startY=0, startLeft=0, startTop=0;
-    head.addEventListener('mousedown', e=>{
-      if(e.target.closest('.floatwin__btn')) return;
-      dragging = true;
-      startX = e.clientX; startY = e.clientY;
-      const r = win.getBoundingClientRect();
-      startLeft = r.left; startTop = r.top;
-      e.preventDefault();
-    });
-    window.addEventListener('mousemove', e=>{
-      if(!dragging) return;
-      win.style.left = (startLeft + e.clientX - startX) + 'px';
-      win.style.top = (startTop + e.clientY - startY) + 'px';
-    });
-    window.addEventListener('mouseup', ()=>{ dragging = false; });
-
-    cdRenderLog(false);
-  }
-
-  $('btnOpenCwDecoder').addEventListener('click', openCwDecoderWindow);
 })();
 </script>
 </body>
